@@ -1,0 +1,62 @@
+# ============================================================
+# DAFTAR ISTILAH ASING YANG DIKENAL (pendekatan inclusion-list)
+#
+# KENAPA DIBALIK DARI PENDEKATAN SEBELUMNYA:
+# Versi awal mencoba menebak "kata ini asing" dengan mencocokkan
+# ke kamus Bahasa Inggris kuno, lalu mengecualikan kata yang
+# ternyata Indonesia. Setelah diuji ke makalah asli, ini gagal
+# total -- puluhan kata Indonesia biasa (hakikat, watak, nalar,
+# corak, dst) kebetulan tercatat juga di kamus Inggris usang itu
+# sebagai kata arkais/ilmiah, sehingga salah tertandai.
+#
+# Pendekatan di file ini dibalik: sistem HANYA menandai kata yang
+# ADA di daftar ini (istilah asing yang sudah dikenal relevan
+# dengan bidang penelitian), bukan menebak dari kamus umum.
+#
+# KONSEKUENSI YANG HARUS DITULIS DI BATASAN PENELITIAN:
+# Sistem tidak akan mendeteksi istilah asing baru yang belum ada
+# di daftar ini. Presisinya tinggi, tapi recall-nya terbatas pada
+# cakupan daftar -- ini keputusan desain yang disengaja, bukan
+# kekurangan yang disembunyikan.
+#
+# Kelompok PERLU menambah daftar ini seiring ditemukannya istilah
+# baru saat menguji ke lebih banyak dokumen (idealnya per rumpun
+# ilmu -- bagian "umum" di bawah berlaku lintas bidang, bagian lain
+# bisa ditambah sesuai jenis makalah yang diuji).
+# ============================================================
+
+umum:
+  - stakeholder
+  - framework
+  - keyword
+  - brainstorming
+  - feedback
+  - benchmark
+  - output
+  - input
+  - trend
+
+teknologi_informasi:
+  - framework
+  - database
+  - deployment
+  - pipeline
+  - interface
+  - debugging
+  - runtime
+  - backend
+  - frontend
+  - middleware
+  - repository
+  - commit
+  - compile
+  - query
+  - endpoint
+  - cloud
+  - hosting
+  - algorithm
+  - bug
+  - patch
+  - script
+  - encryption
+  - firewall

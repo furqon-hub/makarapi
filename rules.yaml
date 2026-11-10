@@ -1,0 +1,74 @@
+# ============================================================
+# KONFIGURASI ATURAN FORMAT PENULISAN
+# ============================================================
+# SUMBER: Pedoman Penulisan Tugas Akhir FEBI UIN K.H. Abdurrahman
+# Wahid Pekalongan, Edisi 2026 (SK Dekan FEBI Nomor 243 Tahun 2026).
+# Nilai di bawah diambil dari BAB VII "Teknik Penulisan Skripsi".
+#
+# KEPUTUSAN METODOLOGIS (WAJIB ditulis di bab Metode/Batasan):
+# UIN Gusdur tidak punya pedoman khusus makalah atau KTI. Pedoman
+# ini aslinya untuk SKRIPSI FEBI. Penelitian ini mengadaptasinya
+# sebagai basis makalah, dengan SATU penyesuaian yang disengaja:
+# spasi baris (1,5 untuk makalah, pedoman asli 2,0 untuk skripsi)
+# mengikuti konvensi makalah yang berlaku di lingkungan kampus.
+# Semua nilai lain (margin, font, indentasi, perataan) diikuti
+# APA ADANYA dari pedoman skripsi ini, TANPA penyesuaian lain.
+#
+# CAKUPAN: karena ini pedoman per fakultas (bukan pedoman UIN-wide),
+# dataset uji HARUS dibatasi ke mahasiswa FEBI -- lihat Batasan
+# Penelitian. Kalau menguji ke mahasiswa fakultas lain, hasilnya
+# tidak representatif karena fakultas lain mungkin punya pedoman
+# sendiri dengan nilai berbeda.
+# ============================================================
+
+ukuran_kertas:
+  nama: "A4"
+  lebar_cm: 21.0          # KEPUTUSAN SEMENTARA, PERLU DIKONFIRMASI KE DOSEN/PRODI:
+                           # pedoman tertulis literal "21,5 cm", tapi itu bukan ukuran
+                           # A4 standar (21,0 cm) dan TIDAK ADA dokumen nyata yang
+                           # memakainya -- kemungkinan besar typo di pedoman resmi.
+                           # Dipakai 21,0 (standar) sampai ada konfirmasi resmi.
+  tinggi_cm: 29.7
+  sumber_halaman: "hal. 30, BAB VII.A poin 4 -- NILAI ASLI TERTULIS: 21,5 cm (lihat catatan di atas)"
+
+margin:
+  atas_cm: 4.0
+  bawah_cm: 3.0
+  kiri_cm: 4.0
+  kanan_cm: 3.0
+  toleransi_cm: 0.05      # toleransi pembulatan konversi satuan
+  sumber_halaman: "hal. 30, BAB VII.B (Teknik Pengetikan), poin 4: \"margin 4-4-3-3, yaitu 4cm untuk bagian atas dan kiri; 3cm untuk bagian bawah dan kanan\""
+
+font:
+  nama: "Times New Roman"
+  ukuran_isi_pt: 12
+  ukuran_judul_tabel_gambar_pt: 12   # BUKAN rentang 10-11 -- pedoman sebut eksplisit 12pt untuk judul tabel/gambar
+  ukuran_sumber_tabel_gambar_pt: 10  # sumber/keterangan DI BAWAH tabel-gambar, bukan judulnya
+  sumber_halaman: "hal. 30 BAB VII.B poin 1 (font isi); hal. 32 BAB VII.F poin 6 (ukuran judul & sumber tabel/gambar)"
+  catatan: "Pedoman juga menyebut font Sakkal Majalla/Traditional Arabic 16pt untuk teks berbahasa Arab (hal. 30) -- di luar cakupan sistem ini karena makalah yang diuji berbahasa Indonesia."
+
+spasi:
+  baris_isi: 1.5           # ADAPTASI untuk makalah -- pedoman asli (skripsi) pakai 2.0, lihat catatan di atas
+  baris_isi_skripsi_asli: 2.0   # disimpan sebagai referensi, BUKAN dipakai rule_engine
+  baris_daftar_pustaka: 1.0
+  toleransi: 0.05
+  sumber_halaman: "hal. 30 BAB VII.B poin 3 (spasi isi, nilai asli skripsi); hal. 30 BAB VII.C poin 3 (spasi Daftar Pustaka)"
+
+indentasi:
+  awal_paragraf_cm: 1.0    # BUKAN 1.27 -- pedoman sebut eksplisit "menjorok (tabbing) dengan jarak 1 cm dari garis margin"
+  toleransi_cm: 0.05
+  sumber_halaman: "hal. 30, BAB VII.B poin 5"
+
+perataan:
+  jenis: "justify"         # pedoman: "pilih alternatif justified" (hal. 30, poin 6)
+  sumber_halaman: "hal. 30, BAB VII.B poin 6"
+
+format_judul:
+  # Belum dipakai rule_engine saat ini -- dicatat di sini supaya siap
+  # dipakai saat fitur pemeriksaan judul bab/subbab dibangun.
+  judul_bab: "kapital, bold (cetak tebal), rata tengah"
+  judul_subbab: "bold, Capitalize Each Word (kecuali kata hubung/depan)"
+  judul_sub_subbab: "TIDAK bold, Capitalize Each Word"
+  istilah_asing_belum_diserap: "italic"
+  nama_lembaga_asing: "TIDAK italic (contoh: World Health Organization)"
+  sumber_halaman: "hal. 31, BAB VII.E (Format Teks)"
