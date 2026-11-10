@@ -1,0 +1,6 @@
+python-docx
+pyyaml
+fastapi
+uvicorn
+python-multipart
+streamlit
