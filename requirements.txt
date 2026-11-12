@@ -3,4 +3,3 @@ pyyaml
 fastapi
 uvicorn
 python-multipart
-streamlit

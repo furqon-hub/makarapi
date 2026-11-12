@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1F3864">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>MakaRapi - Pemeriksa Format Makalah</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#1b2333;--mut:#5d6b82;--pri:#1F3864;--pri2:#2f5597;--line:#dde3ee;--ok:#1d7a46;--warn:#b45309;--bad:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#10151f;--card:#18202e;--ink:#e8edf6;--mut:#9aa7bd;--pri:#6f9bf0;--pri2:#8fb2f5;--line:#2a3548;--ok:#4cc38a;--warn:#f2a64a;--bad:#ff7b72}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#1F3864;color:#fff;padding:18px 16px}
+header h1{margin:0;font-size:1.25rem}header p{margin:2px 0 0;font-size:.85rem;opacity:.85}
+main{max-width:760px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+h2{font-size:1rem;margin:0 0 10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--pri);border-color:var(--pri);color:#fff}
+@media (prefers-color-scheme:dark){.chip[aria-pressed=true]{color:#10151f}}
+.note{color:var(--mut);font-size:.85rem;margin:8px 0 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+label{display:block;font-size:.8rem;color:var(--mut)}
+input[type=text],input[type=number],select{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;cursor:pointer;color:var(--mut)}
+.drop.on{border-color:var(--pri);color:var(--ink)}
+.btn{display:inline-block;border:0;border-radius:10px;padding:12px 18px;font:inherit;font-weight:600;background:var(--pri);color:#fff;cursor:pointer}
+@media (prefers-color-scheme:dark){.btn{color:#10151f}}
+.btn.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.err{background:color-mix(in srgb,var(--bad) 12%,transparent);border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.score{display:flex;align-items:center;gap:14px}
+.num{font-size:2.6rem;font-weight:700;line-height:1}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;flex:1}
+.bar i{display:block;height:100%}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tag{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:.8rem}
+.v{border-top:1px solid var(--line);padding:10px 0}
+.v:first-child{border-top:0}
+.v b{display:block}
+.v small{color:var(--mut)}
+.found{color:var(--bad)}.should{color:var(--ok)}
+.hide{display:none}
+.k{font-style:italic}
+</style>
+</head>
+<body>
+<header><h1>MakaRapi</h1><p>Pemeriksa format makalah (.docx) berbasis aturan pedoman</p></header>
+<main>
+  <div id="err" class="err hide" role="alert"></div>
+
+  <section class="card">
+    <h2>1. Pilih pedoman</h2>
+    <div class="chips" id="profil"></div>
+    <p class="note" id="profilKet"></p>
+    <div id="kustom" class="hide">
+      <div class="grid">
+        <div><label>Margin atas (cm)<input type="number" step="0.1" name="atas_cm"></label></div>
+        <div><label>Margin bawah (cm)<input type="number" step="0.1" name="bawah_cm"></label></div>
+        <div><label>Margin kiri (cm)<input type="number" step="0.1" name="kiri_cm"></label></div>
+        <div><label>Margin kanan (cm)<input type="number" step="0.1" name="kanan_cm"></label></div>
+        <div><label>Nama font<input type="text" name="font_nama" placeholder="Times New Roman"></label></div>
+        <div><label>Ukuran font (pt)<input type="number" step="0.5" name="font_ukuran_pt"></label></div>
+        <div><label>Spasi isi<input type="number" step="0.1" name="spasi_isi"></label></div>
+        <div><label>Indentasi paragraf (cm)<input type="number" step="0.1" name="indentasi_cm"></label></div>
+        <div style="grid-column:1/-1"><label>Perataan
+          <select name="perataan"><option value="">(ikut FEBI)</option><option value="justify">Rata kiri-kanan</option><option value="left">Rata kiri</option><option value="center">Tengah</option><option value="right">Rata kanan</option></select></label></div>
+      </div>
+      <p class="note">Kolom yang dikosongkan memakai nilai pedoman FEBI.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. Unggah dokumen</h2>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Pilih file docx">
+      <div id="dropTxt">Ketuk untuk memilih file .docx (maks. 10 MB)</div>
+    </div>
+    <input type="file" id="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hide">
+    <div class="row">
+      <button class="btn" id="cek" disabled>Periksa sekarang</button>
+      <button class="btn sec hide" id="fix">Unduh hasil perbaikan</button>
+    </div>
+    <p class="note" id="status"></p>
+  </section>
+
+  <section id="hasil" class="hide">
+    <div class="card">
+      <h2>Hasil: <span id="nf"></span></h2>
+      <div class="score"><div class="num" id="skor"></div><div class="bar"><i id="barI"></i></div></div>
+      <p class="note" id="ringkas"></p>
+      <div class="tags" id="kat"></div>
+    </div>
+    <div class="card"><h2>Pelanggaran</h2><div id="vlist"></div></div>
+    <div class="card"><h2>Kandidat istilah asing (perlu dicetak miring)</h2><div id="ilist"></div></div>
+  </section>
+</main>
+
+<script>
+if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(function(){});}
+(function(){
+  var API = location.origin;       // satu alamat dengan halaman ini
+  var MAKS = 10*1024*1024;
+  var profil = "febi", berkas = null, profilData = [];
+  var $ = function(i){return document.getElementById(i)};
+
+  function galat(m){var e=$("err");e.textContent=m;e.classList.toggle("hide",!m)}
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+
+  function pesanDari(r,j){
+    if(j && typeof j.detail==="string") return j.detail;
+    if(j && Array.isArray(j.detail)) return "Isian tidak valid: "+j.detail.map(function(d){return d.msg}).join("; ");
+    return "Permintaan gagal (kode "+r.status+").";
+  }
+
+  function pasangProfil(){
+    var box=$("profil"); box.innerHTML="";
+    profilData.forEach(function(p){
+      var b=el("button","chip",p.nama);b.type="button";
+      b.setAttribute("aria-pressed",String(p.id===profil));
+      b.onclick=function(){profil=p.id;pasangProfil()};
+      box.appendChild(b);
+    });
+    var cur=profilData.filter(function(p){return p.id===profil})[0];
+    $("profilKet").textContent=cur?cur.keterangan:"";
+    $("kustom").classList.toggle("hide",profil!=="kustom");
+  }
+
+  fetch(API+"/profil").then(function(r){return r.json()}).then(function(d){profilData=d;pasangProfil()})
+   .catch(function(){galat("Server tidak terjangkau. Coba muat ulang halaman.")});
+
+  function pilih(f){
+    galat("");
+    if(!f) return;
+    if(!/\.docx$/i.test(f.name)){galat("Hanya file .docx yang didukung.");return}
+    if(f.size>MAKS){galat("Ukuran file melebihi 10 MB.");return}
+    berkas=f;$("dropTxt").textContent=f.name+" ("+(f.size/1024).toFixed(0)+" KB)";
+    $("drop").classList.add("on");$("cek").disabled=false;
+  }
+  $("drop").onclick=function(){$("file").click()};
+  $("drop").onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
+  $("file").onchange=function(){pilih(this.files[0])};
+  $("drop").ondragover=function(e){e.preventDefault()};
+  $("drop").ondrop=function(e){e.preventDefault();pilih(e.dataTransfer.files[0])};
+
+  function formData(){
+    var f=new FormData();f.append("file",berkas,berkas.name);f.append("profil",profil);
+    if(profil==="kustom"){
+      document.querySelectorAll("#kustom [name]").forEach(function(i){
+        var v=i.value.trim().replace(",",".");
+        if(v!=="") f.append(i.name, i.name==="font_nama"||i.name==="perataan"?i.value.trim():v);
+      });
+    }
+    return f;
+  }
+
+  function sibuk(on,teks){$("cek").disabled=on||!berkas;$("fix").disabled=on;$("status").textContent=teks||""}
+
+  $("cek").onclick=function(){
+    galat("");sibuk(true,"Memeriksa... (jika server baru bangun, bisa sampai 1 menit)");
+    fetch(API+"/check",{method:"POST",body:formData()}).then(function(r){
+      return r.json().catch(function(){return null}).then(function(j){if(!r.ok)throw new Error(pesanDari(r,j));return j});
+    }).then(tampil).catch(function(e){
+      galat(e instanceof TypeError?"Server tidak terjangkau. Periksa koneksi internet Anda.":e.message);
+    }).then(function(){sibuk(false,"")});
+  };
+
+  function tampil(h){
+    $("hasil").classList.remove("hide");
+    $("nf").textContent=h.nama_file;
+    var s=h.skor_kepatuhan_persen;
+    $("skor").textContent=s+"%";
+    var w=$("barI");w.style.width=Math.max(0,Math.min(100,s))+"%";
+    w.style.background=s>=80?"var(--ok)":s>=50?"var(--warn)":"var(--bad)";
+    $("ringkas").textContent=h.jumlah_pelanggaran+" pelanggaran dari "+h.total_pemeriksaan+" pemeriksaan.";
+    var kat=$("kat");kat.innerHTML="";
+    Object.keys(h.ringkasan_per_kategori).forEach(function(k){kat.appendChild(el("span","tag",k.replace(/_/g," ")+": "+h.ringkasan_per_kategori[k]))});
+    var vl=$("vlist");vl.innerHTML="";
+    if(!h.pelanggaran.length) vl.appendChild(el("p","note","Tidak ada pelanggaran terdeteksi."));
+    h.pelanggaran.forEach(function(v){
+      var d=el("div","v");d.appendChild(el("b",null,v.kategori.replace(/_/g," ")));
+      d.appendChild(el("small",null,v.lokasi));
+      var l=el("div");var a=el("span","found","Ditemukan: "+v.ditemukan);var b=el("span","should","  Seharusnya: "+v.seharusnya);
+      l.appendChild(a);l.appendChild(document.createElement("br"));l.appendChild(b);d.appendChild(l);vl.appendChild(d);
+    });
+    var il=$("ilist");il.innerHTML="";
+    if(!h.kandidat_istilah_asing.length) il.appendChild(el("p","note","Tidak ada kandidat."));
+    h.kandidat_istilah_asing.forEach(function(k){
+      var d=el("div","v");d.appendChild(el("b","k",k.kata_kandidat));
+      d.appendChild(el("small",null,"Paragraf "+k.paragraf_index+": "+k.konteks));il.appendChild(d);
+    });
+    $("fix").classList.remove("hide");
+    $("hasil").scrollIntoView({behavior:"smooth"});
+  }
+
+  $("fix").onclick=function(){
+    galat("");sibuk(true,"Menyiapkan file perbaikan...");
+    fetch(API+"/fix",{method:"POST",body:formData()}).then(function(r){
+      if(!r.ok) return r.json().catch(function(){return null}).then(function(j){throw new Error(pesanDari(r,j))});
+      return r.blob();
+    }).then(function(b){
+      var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="fixed_"+berkas.name;
+      document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href)},4000);
+    }).catch(function(e){galat(e instanceof TypeError?"Server tidak terjangkau. Periksa koneksi internet Anda.":e.message)})
+    .then(function(){sibuk(false,"")});
+  };
+})();
+</script>
+</body>
+</html>

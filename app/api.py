@@ -2,13 +2,14 @@
 api.py
 ======
 Pembungkus REST API (FastAPI) untuk mesin MakaRapi, supaya bisa dipanggil
-dari aplikasi mobile (React Native / Expo).
+dari halaman web (app/web/index.html) yang juga dibungkus WebView menjadi APK.
 
 Jalankan lokal:
     uvicorn api:app --reload --port 8000
 Dokumentasi interaktif otomatis: http://localhost:8000/docs
 
 Endpoint:
+    GET  /        -> halaman web MakaRapi
     GET  /health  -> cek server hidup
     GET  /profil  -> daftar profil pedoman (febi, kustom)
     POST /check   -> unggah .docx, terima JSON skor + pelanggaran + kandidat istilah asing
@@ -48,7 +49,7 @@ RATE_LIMIT = 10          # permintaan
 RATE_WINDOW = 60         # detik
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-app = FastAPI(title="MakaRapi API", version="0.2.0")
+app = FastAPI(title="MakaRapi API", version="0.3.0")
 _hits = defaultdict(deque)
 
 PROFIL = [
@@ -156,6 +157,15 @@ async def _simpan_upload(file: UploadFile) -> str:
     return tmp.name
 
 
+WEB_DIR = Path(__file__).resolve().parent / "web"
+
+
+@app.get("/", include_in_schema=False)
+def beranda():
+    """Halaman web MakaRapi (dipakai browser komputer dan cangkang WebView APK)."""
+    return FileResponse(WEB_DIR / "index.html", media_type="text/html; charset=utf-8")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "versi": app.version}
@@ -247,3 +257,20 @@ async def fix(
         filename=f"fixed_{file.filename}",
         background=BackgroundTask(_bersihkan),
     )
+
+
+_STATIS = {
+    "manifest.webmanifest": "application/manifest+json",
+    "sw.js": "application/javascript",
+    "icon-192.png": "image/png",
+    "icon-512.png": "image/png",
+    "icon-maskable-512.png": "image/png",
+}
+
+
+@app.get("/{nama}", include_in_schema=False)
+def berkas_statis(nama: str):
+    """Berkas PWA (manifest, service worker, ikon) - daftar putih, bukan folder bebas."""
+    if nama not in _STATIS:
+        raise HTTPException(status_code=404, detail="Tidak ditemukan.")
+    return FileResponse(WEB_DIR / nama, media_type=_STATIS[nama])
