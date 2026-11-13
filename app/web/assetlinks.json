@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "id.makarapi.app",
+        "sha256_cert_fingerprints": ["F0:90:78:6F:8E:8E:1B:85:EC:7F:54:D6:53:1C:FB:27:56:EC:7D:D3:BD:03:A5:F5:E7:2B:E5:C0:CC:67:73:94"]
+      }
+    }]

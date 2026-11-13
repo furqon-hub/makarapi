@@ -259,6 +259,12 @@ async def fix(
     )
 
 
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
+def assetlinks():
+    """Verifikasi kepemilikan situs untuk APK (Digital Asset Links) agar bilah browser tidak tampil."""
+    return FileResponse(WEB_DIR / "assetlinks.json", media_type="application/json")
+
+
 _STATIS = {
     "manifest.webmanifest": "application/manifest+json",
     "sw.js": "application/javascript",
