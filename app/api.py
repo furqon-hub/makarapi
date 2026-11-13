@@ -49,7 +49,7 @@ RATE_LIMIT = 10          # permintaan
 RATE_WINDOW = 60         # detik
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-app = FastAPI(title="MakaRapi API", version="0.3.0")
+app = FastAPI(title="MakaRapi API", version="0.3.2")
 _hits = defaultdict(deque)
 
 PROFIL = [

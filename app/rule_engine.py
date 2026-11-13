@@ -16,6 +16,8 @@ kebaruan di artikel: aturan tidak ditanam di kode (hard-coded).
 import yaml
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+from parser import ATURAN_PER_ZONA  # aspek yang berlaku per jenis paragraf (dipakai juga auto_fix)
+
 ALIGNMENT_MAP = {
     WD_ALIGN_PARAGRAPH.LEFT: "left",
     WD_ALIGN_PARAGRAPH.RIGHT: "right",
@@ -92,12 +94,16 @@ def check_paragraphs(paragraphs_info, rules):
     for p in paragraphs_info:
         loc = f"Paragraf #{p['index']} (\"{p['teks_cuplikan']}...\")"
         zona = p.get("zona", "isi")
+        aspek = ATURAN_PER_ZONA.get(zona, ())
 
-        cek_font = zona in ("isi", "daftar_pustaka")
-        cek_perataan_indentasi_spasi = zona == "isi"
+        cek_font = "font" in aspek
+        cek_ukuran = "ukuran" in aspek
+        cek_spasi = "spasi" in aspek
+        cek_indentasi = "indentasi" in aspek
+        cek_perataan = "perataan" in aspek
 
         if not cek_font:
-            pass  # lewati cek font untuk zona "awal", "judul_bab", "judul_daftar_pustaka"
+            pass  # judul, sampul, daftar isi, dst. tidak diperiksa fontnya
         elif p["font_name"] and p["font_name"] != f_rules["nama"]:
             violations.append({
                 "kategori": "jenis_font",
@@ -115,7 +121,7 @@ def check_paragraphs(paragraphs_info, rules):
                 "severity": "perlu_verifikasi",
             })
 
-        if cek_font and p["font_size_pt"] is not None:
+        if cek_ukuran and p["font_size_pt"] is not None:
             if abs(p["font_size_pt"] - f_rules["ukuran_isi_pt"]) > 0.1:
                 violations.append({
                     "kategori": "ukuran_font",
@@ -125,7 +131,7 @@ def check_paragraphs(paragraphs_info, rules):
                     "severity": "deterministik",
                 })
 
-        if cek_perataan_indentasi_spasi and p["line_spacing"] is not None:
+        if cek_spasi and p["line_spacing"] is not None:
             if abs(p["line_spacing"] - s_rules["baris_isi"]) > s_rules["toleransi"]:
                 violations.append({
                     "kategori": "spasi_baris",
@@ -135,7 +141,7 @@ def check_paragraphs(paragraphs_info, rules):
                     "severity": "deterministik",
                 })
 
-        if cek_perataan_indentasi_spasi and p["first_line_indent_cm"] is not None:
+        if cek_indentasi and p["first_line_indent_cm"] is not None:
             if abs(p["first_line_indent_cm"] - i_rules["awal_paragraf_cm"]) > i_rules["toleransi_cm"]:
                 violations.append({
                     "kategori": "indentasi",
@@ -145,7 +151,7 @@ def check_paragraphs(paragraphs_info, rules):
                     "severity": "deterministik",
                 })
 
-        if cek_perataan_indentasi_spasi:
+        if cek_perataan:
             align_str = ALIGNMENT_MAP.get(p["alignment"], "tidak diketahui")
             if align_str is not None and align_str != a_rules["jenis"]:
                 violations.append({
@@ -184,12 +190,8 @@ def run_all_checks(page_setup_list, paragraphs_info, rules):
     # padahal sengaja dilewati.
     total_checks = 0
     for p in paragraphs_info:
-        zona = p.get("zona", "isi")
-        if zona == "isi":
-            total_checks += 5  # jenis_font, ukuran_font, spasi, indentasi, perataan
-        elif zona == "daftar_pustaka":
-            total_checks += 2  # jenis_font, ukuran_font saja
-        # zona "awal", "judul_bab", "judul_daftar_pustaka": tidak diperiksa sama sekali
+        total_checks += len(ATURAN_PER_ZONA.get(p.get("zona", "isi"), ()))
+        # jenis lain (judul, sampul, daftar isi, keterangan): tidak diperiksa
 
     total_checks += len(page_setup_list) * 6
 

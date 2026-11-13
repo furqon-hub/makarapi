@@ -196,60 +196,153 @@ def _resolve_line_spacing(paragraph):
 
 import re
 
-BAB_PATTERN = re.compile(r"^BAB\s+[IVXLCDM]+\b", re.IGNORECASE)
-DAFTAR_PUSTAKA_PATTERN = re.compile(r"^DAFTAR\s+PUSTAKA\s*$", re.IGNORECASE)
+from docx.enum.text import WD_ALIGN_PARAGRAPH as _ALIGN
+
+# "BAB I", "BAB II", dan juga "BAB 1" (angka Arab) -- ditemukan dari pengujian dokumen nyata
+BAB_PATTERN = re.compile(r"^BAB\s+([IVXLCDM]+|\d+)\b", re.IGNORECASE)
+DAFTAR_PUSTAKA_PATTERN = re.compile(
+    r"^(DAFTAR\s+(PUSTAKA|RUJUKAN|REFERENSI)|REFERENSI|REFERENCES)\s*$", re.IGNORECASE
+)
+LAMPIRAN_PATTERN = re.compile(r"^LAMPIRAN\b", re.IGNORECASE)
+KETERANGAN_PATTERN = re.compile(r"^(Gambar|Tabel|Grafik|Bagan|Diagram)\s+\d|^Sumber\s*:", re.IGNORECASE)
+NOMOR_PATTERN = re.compile(r"^(\d+(\.\d+)*[.)]?|[A-Za-z][.)]|[IVXLC]+\.)\s+\S")
+BULLET_PATTERN = re.compile(r"^[\u2022\u25CF\u25E6\-\u2013*]\s+\S")
+TOC_PATTERN = re.compile(r"(\.{3,}|\t)\s*\d+\s*$")
+AKHIR_KALIMAT = re.compile(r"[.!?][\"\u201d\u2019)\]]*$")
+
+
+def _nama_style(p):
+    try:
+        return (p.style.name or "").lower()
+    except Exception:
+        return ""
+
+
+def _punya_penomoran(p):
+    ppr = p._p.pPr
+    return ppr is not None and ppr.numPr is not None
+
+
+def _semua_tebal(p):
+    runs = [r for r in p.runs if r.text.strip()]
+    return bool(runs) and all(r.bold for r in runs)
+
+
+def _jenis_paragraf(p, teks, zona):
+    """Tentukan jenis satu paragraf (bukan judul bab / daftar pustaka -- itu
+    ditangani pemanggil). Mengembalikan salah satu zona:
+
+      isi            kalimat isi di dalam bab (indentasi, rata, spasi diperiksa)
+      kalimat_awal   kalimat isi di bagian awal, mis. Kata Pengantar
+      butir_daftar   butir daftar bernomor/berpoin & lanjutannya (tidak diindentasi)
+      subjudul       judul subbab / judul teks tebal / teks rata tengah
+      keterangan     keterangan gambar/tabel, "Sumber: ..."
+      awal           sampul, daftar isi, dan baris pendek lain di bagian awal
+      daftar_pustaka / lampiran
+    """
+    if zona == "daftar_pustaka":
+        return "daftar_pustaka"
+    if zona == "lampiran":
+        return "lampiran"
+
+    nama = _nama_style(p)
+    pf = p.paragraph_format
+    tengah = pf.alignment == _ALIGN.CENTER
+    di_awal = zona == "awal"
+
+    if nama.startswith("toc") or TOC_PATTERN.search(teks):
+        return "awal"
+    if nama.startswith(("heading", "judul", "title", "subtitle")):
+        return "awal" if di_awal else "subjudul"
+    if KETERANGAN_PATTERN.match(teks):
+        return "keterangan"
+    if tengah:
+        return "awal" if di_awal else "subjudul"
+    if _punya_penomoran(p) or nama.startswith("list"):
+        return "butir_daftar"
+    if BULLET_PATTERN.match(teks):
+        return "butir_daftar"
+
+    pendek = len(teks) <= 120
+    berakhir_kalimat = bool(AKHIR_KALIMAT.search(teks))
+    if NOMOR_PATTERN.match(teks):
+        if berakhir_kalimat and not _semua_tebal(p):
+            return "butir_daftar"          # "1. Kalimat lengkap."  -> butir manual
+        if pendek:
+            return "subjudul"              # "1.1 Latar Belakang"   -> judul manual
+    if pendek and not berakhir_kalimat and _semua_tebal(p):
+        return "subjudul"
+
+    if di_awal:
+        # Bagian awal: hanya paragraf yang tampak seperti kalimat (panjang >=150 karakter, atau >=80 dan
+        # berakhir tanda baca; tidak rata tengah) -- sisanya sampul/daftar isi/tanda tangan.
+        if len(teks) >= 150 or (len(teks) >= 80 and berakhir_kalimat):
+            return "kalimat_awal"
+        return "awal"
+
+    # Di dalam bab: lanjutan butir daftar = paragraf yang menjorok penuh dari kiri
+    # tanpa indentasi baris pertama (bukan paragraf isi biasa).
+    kiri = pf.left_indent.cm if pf.left_indent is not None else 0.0
+    baris1 = pf.first_line_indent.cm if pf.first_line_indent is not None else 0.0
+    if kiri >= 0.4 and abs(baris1) < 0.05:
+        return "butir_daftar"
+    return "isi"
 
 
 def _classify_zones(doc: Document):
     """
-    TEMUAN DARI PENGUJIAN KE DOKUMEN ASLI (penting dibaca):
-    Rule engine awalnya menyamaratakan SATU aturan (margin, font,
-    indentasi, perataan "isi") ke SEMUA paragraf tanpa kecuali.
-    Begitu diuji ke makalah mahasiswa sungguhan, ini menghasilkan
-    banyak sekali false positive: judul di halaman sampul dituduh
-    "salah rata" padahal sampul memang konvensinya rata tengah,
-    "BAB I" dituduh "salah indentasi" padahal judul bab memang tidak
-    pakai indentasi, dan entri Daftar Pustaka dituduh "salah
-    indentasi" padahal itu memang hanging indent yang benar.
+    Klasifikasi SETIAP paragraf (indeks sama dengan doc.paragraphs).
 
-    Fungsi ini membagi dokumen jadi beberapa ZONA berdasarkan pola
-    teks yang umum dipakai di makalah/skripsi Indonesia, supaya
-    rule_engine bisa menerapkan aturan yang BERBEDA per zona,
-    bukan satu aturan untuk semua:
+    TEMUAN DARI PENGUJIAN KE DOKUMEN ASLI (penting untuk Metode/Pembahasan artikel):
+    1) Satu aturan "isi" yang disamaratakan ke semua paragraf menghasilkan banyak
+       false positive (sampul dituduh salah rata, judul bab dituduh salah
+       indentasi, daftar pustaka dituduh salah indentasi padahal hanging indent).
+    2) Perbaikan otomatis yang juga menyamaratakan aturan merusak dokumen:
+       judul, sampul, butir daftar, dan daftar pustaka ikut menjorok 1 cm.
+    Karena itu pemeriksa DAN perbaikan memakai klasifikasi yang sama; lihat
+    ATURAN_PER_ZONA di bawah untuk aspek apa yang berlaku di tiap jenis.
 
-      - "awal"            : sampul, kata pengantar, daftar isi --
-                             sebelum "BAB I" pertama kali muncul.
-      - "judul_bab"        : baris "BAB I/II/III/..." itu sendiri.
-      - "isi"              : paragraf isi di dalam bab.
-      - "judul_daftar_pustaka": baris "DAFTAR PUSTAKA" itu sendiri.
-      - "daftar_pustaka"   : entri-entri rujukan setelah itu.
-
-    KETERBATASAN yang harus disadari (bahan Batasan Penelitian):
-    Deteksi ini berbasis pola teks sederhana (regex "BAB <angka
-    romawi>" dan "DAFTAR PUSTAKA"). Kalau mahasiswa menulis variasi
-    lain (misalnya "Daftar Rujukan", atau "CHAPTER 1"), zona tidak
-    akan terdeteksi benar. Ini perlu disebut sebagai batasan, bukan
-    disembunyikan.
+    KETERBATASAN (bahan Batasan Penelitian): klasifikasi berbasis pola teks,
+    style, penomoran, dan tampilan (tebal/rata tengah/panjang). Variasi yang tak
+    terduga (mis. "CHAPTER 1", judul manual tanpa tebal dan tanpa nomor, paragraf isi
+    yang sengaja dijorokkan penuh) bisa salah digolongkan. Hasil pemeriksaan
+    ditampilkan sebagai saran, dan pengguna tetap perlu memeriksa hasil perbaikan.
     """
-    zona_per_paragraf = []
-    zona_sekarang = "awal"
-
+    hasil = []
+    zona = "awal"
     for p in doc.paragraphs:
         teks = p.text.strip()
-
-        if BAB_PATTERN.match(teks):
-            zona_sekarang = "isi"
-            zona_per_paragraf.append("judul_bab")
+        if not teks:
+            hasil.append(zona)
             continue
+        judul_style = _nama_style(p).startswith(("heading", "judul", "title"))
+        boleh_judul = len(teks) <= 80 or judul_style
 
-        if DAFTAR_PUSTAKA_PATTERN.match(teks):
-            zona_sekarang = "daftar_pustaka"
-            zona_per_paragraf.append("judul_daftar_pustaka")
+        if boleh_judul and BAB_PATTERN.match(teks):
+            zona = "isi"
+            hasil.append("judul_bab")
             continue
+        if boleh_judul and DAFTAR_PUSTAKA_PATTERN.match(teks):
+            zona = "daftar_pustaka"
+            hasil.append("judul_daftar_pustaka")
+            continue
+        if boleh_judul and LAMPIRAN_PATTERN.match(teks):
+            zona = "lampiran"
+            hasil.append("judul_lampiran")
+            continue
+        hasil.append(_jenis_paragraf(p, teks, zona))
+    return hasil
 
-        zona_per_paragraf.append(zona_sekarang)
 
-    return zona_per_paragraf
+# Aspek yang diperiksa DAN diperbaiki per jenis paragraf. Jenis yang tidak
+# tercantum (judul, sampul, daftar isi, keterangan, lampiran) tidak diindentasi,
+# tidak diratakan, dan tidak diubah spasi/ukurannya.
+ATURAN_PER_ZONA = {
+    "isi":            ("font", "ukuran", "spasi", "indentasi", "perataan"),
+    "kalimat_awal":   ("font", "ukuran", "indentasi", "perataan"),
+    "butir_daftar":   ("font", "ukuran", "spasi"),
+    "daftar_pustaka": ("font", "ukuran"),
+}
 
 
 def classify_zones_untuk_italic(doc: Document):
