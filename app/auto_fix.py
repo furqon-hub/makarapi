@@ -18,21 +18,29 @@ ke file baru. File asli adalah milik pengguna, bukan bahan kerja.
 """
 
 import parser as parser_mod
+import rule_engine
 from docx import Document
 from docx.shared import Cm, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 
 
 def fix_page_setup(doc: Document, rules: dict):
     r = rules["ukuran_kertas"]
     m = rules["margin"]
     for section in doc.sections:
-        section.page_width = Cm(r["lebar_cm"])
-        section.page_height = Cm(r["tinggi_cm"])
-        section.top_margin = Cm(m["atas_cm"])
-        section.bottom_margin = Cm(m["bawah_cm"])
-        section.left_margin = Cm(m["kiri_cm"])
-        section.right_margin = Cm(m["kanan_cm"])
+        # nilai null = tidak diatur pedoman -> dibiarkan apa adanya
+        if r.get("lebar_cm") is not None:
+            section.page_width = Cm(r["lebar_cm"])
+        if r.get("tinggi_cm") is not None:
+            section.page_height = Cm(r["tinggi_cm"])
+        if m.get("atas_cm") is not None:
+            section.top_margin = Cm(m["atas_cm"])
+        if m.get("bawah_cm") is not None:
+            section.bottom_margin = Cm(m["bawah_cm"])
+        if m.get("kiri_cm") is not None:
+            section.left_margin = Cm(m["kiri_cm"])
+        if m.get("kanan_cm") is not None:
+            section.right_margin = Cm(m["kanan_cm"])
 
 
 def fix_paragraph_formatting(doc: Document, rules: dict):
@@ -56,7 +64,8 @@ def fix_paragraph_formatting(doc: Document, rules: dict):
         "right": WD_ALIGN_PARAGRAPH.RIGHT,
         "center": WD_ALIGN_PARAGRAPH.CENTER,
         "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
-    }[a_rules["jenis"]]
+    }.get(a_rules.get("jenis"))
+    aktif = rule_engine.aspek_aktif(rules)  # hanya aspek yang diatur profil
 
     zona_semua = parser_mod.classify_zones_untuk_italic(doc)
 
@@ -64,19 +73,24 @@ def fix_paragraph_formatting(doc: Document, rules: dict):
         if not p.text.strip():
             continue  # jangan sentuh paragraf kosong (biasanya pemisah)
 
-        aspek = parser_mod.ATURAN_PER_ZONA.get(zona, ())
+        aspek = set(parser_mod.ATURAN_PER_ZONA.get(zona, ())) & aktif
         pf = p.paragraph_format
 
         if "spasi" in aspek:
-            pf.line_spacing = s_rules["baris_isi"]
+            if s_rules.get("mode", "multiple") == "exact":
+                pf.line_spacing = Pt(s_rules["baris_isi"])
+                pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+            else:
+                pf.line_spacing = s_rules["baris_isi"]
         if "indentasi" in aspek:
             pf.first_line_indent = Cm(i_rules["awal_paragraf_cm"])
-        if "perataan" in aspek:
+        if "perataan" in aspek and alignment_target is not None:
             pf.alignment = alignment_target
 
         for run in p.runs:
             if run.text.strip():
-                run.font.name = f_rules["nama"]
+                if "font" in aktif:
+                    run.font.name = f_rules["nama"]
                 if "ukuran" in aspek:
                     run.font.size = Pt(f_rules["ukuran_isi_pt"])
 
@@ -89,6 +103,8 @@ def auto_fix_document(input_path: str, output_path: str, rules: dict):
     doc = Document(input_path)
     fix_page_setup(doc, rules)
     fix_paragraph_formatting(doc, rules)
+    import ext_checks
+    ext_checks.perbaiki(doc, rules)
     doc.save(output_path)
     return output_path
 

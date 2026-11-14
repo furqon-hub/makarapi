@@ -11,7 +11,7 @@ Dokumentasi interaktif otomatis: http://localhost:8000/docs
 Endpoint:
     GET  /        -> halaman web MakaRapi
     GET  /health  -> cek server hidup
-    GET  /profil  -> daftar profil pedoman (febi, kustom)
+    GET  /profil  -> daftar profil pedoman (bawaan FEBI, berkas profil/*.yaml per kampus, kustom)
     POST /check   -> unggah .docx, terima JSON skor + pelanggaran + kandidat istilah asing
     POST /fix     -> unggah .docx, terima file .docx hasil perbaikan otomatis
 
@@ -23,12 +23,14 @@ Batasan yang disengaja (lihat bagian Risiko di proposal):
 
 import copy
 import os
+import re
 import tempfile
 import time
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from docx import Document
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,35 +39,96 @@ from starlette.background import BackgroundTask
 
 import auto_fix
 import italic_detector
+import kustom
 import parser as parser_mod
 import rule_engine
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 RULES_PATH = str(BASE_DIR / "rules.yaml")
 ISTILAH_PATH = str(BASE_DIR / "daftar_istilah_asing.yaml")
+PROFIL_DIR = BASE_DIR / "profil"
 
 MAX_BYTES = 10 * 1024 * 1024
 RATE_LIMIT = 10          # permintaan
 RATE_WINDOW = 60         # detik
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-app = FastAPI(title="MakaRapi API", version="0.3.2")
+app = FastAPI(title="MakaRapi API", version="0.5.0")
 _hits = defaultdict(deque)
 
 PROFIL = [
     {
         "id": "febi",
-        "nama": "FEBI UIN Gusdur 2026",
+        "kampus": "FEBI UIN K.H. Abdurrahman Wahid Pekalongan",
+        "nama": "FEBI - Makalah",
         "tervalidasi": True,
-        "keterangan": "Bersumber dari Pedoman Penulisan Tugas Akhir FEBI 2026 (diadaptasi untuk makalah: spasi 1,5).",
+        "keterangan": "Bersumber dari Pedoman Penulisan Tugas Akhir FEBI 2026, diadaptasi untuk makalah: spasi 1,5.",
+    },
+    {
+        "id": "febi_skripsi",
+        "kampus": "FEBI UIN K.H. Abdurrahman Wahid Pekalongan",
+        "nama": "FEBI - Skripsi / Sempro",
+        "tervalidasi": True,
+        "keterangan": "Nilai apa adanya dari Pedoman Penulisan Tugas Akhir FEBI 2026 (spasi 2,0). Untuk skripsi, proposal, dan sempro.",
     },
     {
         "id": "kustom",
+        "kampus": "Lainnya",
         "nama": "Kustom (isi sendiri)",
         "tervalidasi": False,
         "keterangan": "Nilai diisi pengguna; hasil bergantung pada nilai yang dimasukkan.",
     },
 ]
+
+_ID_PROFIL = re.compile(r"^[a-z0-9_]{2,40}$")
+_ID_BAWAAN = {p["id"] for p in PROFIL}
+
+
+def _gabung(dasar, timpa):
+    """Timpa dict `dasar` dengan `timpa` secara rekursif. null (None) di `timpa`
+    ikut menimpa: artinya aspek itu tidak diatur pedoman dan dilewati."""
+    for k, v in timpa.items():
+        if isinstance(v, dict) and isinstance(dasar.get(k), dict):
+            _gabung(dasar[k], v)
+        else:
+            dasar[k] = v
+
+
+def _profil_berkas():
+    """Baca profil per kampus dari folder profil/*.yaml. Berkas yang rusak atau
+    tidak sesuai bentuk dilewati (tidak menjatuhkan server)."""
+    hasil = {}
+    if not PROFIL_DIR.is_dir():
+        return hasil
+    for f in sorted(PROFIL_DIR.glob("*.yaml")):
+        try:
+            d = yaml.safe_load(f.read_text(encoding="utf-8"))
+            pid = d["id"]
+            if (not _ID_PROFIL.match(pid) or pid in _ID_BAWAAN or pid in hasil
+                    or not isinstance(d.get("aturan"), dict)):
+                continue
+            hasil[pid] = d
+        except Exception:
+            continue
+    return hasil
+
+
+def _info_profil(d):
+    """Bentuk ringkas profil berkas untuk GET /profil."""
+    catatan = d.get("catatan") or ""
+    return {
+        "id": d["id"],
+        "nama": d.get("nama", d["id"]),
+        "kampus": d.get("kampus", "Lainnya"),
+        "jenis": d.get("jenis"),
+        "tahun": d.get("tahun"),
+        "tervalidasi": bool(d.get("tervalidasi", False)),
+        "keterangan": ("Dari pedoman publik. " + catatan).strip(),
+        "sumber_judul": d.get("sumber_judul"),
+        "sumber_url": d.get("sumber_url"),
+        "lokasi_nilai": d.get("lokasi_nilai"),
+    }
+
 
 # Rentang nilai yang masuk akal untuk profil kustom: (min, max)
 BATAS = {
@@ -76,15 +139,26 @@ PERATAAN_VALID = {"left", "right", "center", "justify"}
 
 
 def _aturan_untuk(profil, atas_cm, bawah_cm, kiri_cm, kanan_cm, font_nama, font_ukuran_pt,
-                  spasi_isi, indentasi_cm, perataan):
+                  spasi_isi, indentasi_cm, perataan, kustom_json=None):
     """Kembalikan dict aturan untuk profil terpilih. Profil kustom = profil FEBI
     yang nilainya ditimpa dengan isian pengguna (yang kosong memakai nilai FEBI)."""
     dasar = rule_engine.load_rules(RULES_PATH)
     if profil == "febi":
         return dasar
+    if profil == "febi_skripsi":
+        aturan = copy.deepcopy(dasar)
+        aturan["spasi"]["baris_isi"] = dasar["spasi"]["baris_isi_skripsi_asli"]
+        return aturan
+    berkas = _profil_berkas()
+    if profil in berkas:
+        aturan = copy.deepcopy(dasar)
+        _gabung(aturan, berkas[profil]["aturan"])
+        return aturan
     if profil != "kustom":
         raise HTTPException(status_code=422, detail=f"Profil '{profil}' tidak dikenal.")
 
+    if kustom_json:
+        return kustom.aturan_dari_json(dasar, kustom_json)
     aturan = copy.deepcopy(dasar)
     isian = {
         "atas_cm": atas_cm, "bawah_cm": bawah_cm, "kiri_cm": kiri_cm, "kanan_cm": kanan_cm,
@@ -173,7 +247,10 @@ def health():
 
 @app.get("/profil")
 def daftar_profil():
-    return PROFIL
+    urut = [p for p in PROFIL if p["id"] != "kustom"]
+    urut += [_info_profil(d) for d in sorted(_profil_berkas().values(), key=lambda x: (x.get("kampus", ""), x["id"]))]
+    urut += [p for p in PROFIL if p["id"] == "kustom"]
+    return urut
 
 
 @app.post("/check")
@@ -189,9 +266,10 @@ async def check(
     spasi_isi: Optional[float] = Form(None),
     indentasi_cm: Optional[float] = Form(None),
     perataan: Optional[str] = Form(None),
+    kustom_json: Optional[str] = Form(None),
 ):
     rules = _aturan_untuk(profil, atas_cm, bawah_cm, kiri_cm, kanan_cm, font_nama,
-                          font_ukuran_pt, spasi_isi, indentasi_cm, perataan)
+                          font_ukuran_pt, spasi_isi, indentasi_cm, perataan, kustom_json)
     path = await _simpan_upload(file)
     try:
         try:
@@ -200,7 +278,7 @@ async def check(
             raise HTTPException(status_code=422, detail="File .docx tidak dapat dibaca (rusak atau bukan dokumen Word).")
 
         hasil = rule_engine.run_all_checks(
-            parser_mod.get_page_setup(doc), parser_mod.get_paragraphs_info(doc), rules
+            parser_mod.get_page_setup(doc), parser_mod.get_paragraphs_info(doc), rules, doc=doc
         )
         kandidat = italic_detector.find_italic_candidates(doc, ISTILAH_PATH)
         return {
@@ -233,9 +311,10 @@ async def fix(
     spasi_isi: Optional[float] = Form(None),
     indentasi_cm: Optional[float] = Form(None),
     perataan: Optional[str] = Form(None),
+    kustom_json: Optional[str] = Form(None),
 ):
     rules = _aturan_untuk(profil, atas_cm, bawah_cm, kiri_cm, kanan_cm, font_nama,
-                          font_ukuran_pt, spasi_isi, indentasi_cm, perataan)
+                          font_ukuran_pt, spasi_isi, indentasi_cm, perataan, kustom_json)
     path = await _simpan_upload(file)
     out_path = path.replace(".docx", "_fixed.docx")
     try:

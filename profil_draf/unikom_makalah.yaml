@@ -1,0 +1,23 @@
+# Profil dari pedoman PUBLIK. Nilai diambil dari ringkasan dokumen sumber dan BELUM dicek
+# manusia terhadap halaman aslinya -> tervalidasi: false. null = tidak diatur pedoman.
+id: unikom_makalah
+nama: "Unikom - Makalah Ilmiah"
+kampus: "Universitas Komputer Indonesia (Unikom)"
+jenis: "Makalah"
+tahun: null
+tervalidasi: false
+sumber_judul: "Pedoman Penulisan Makalah Ilmiah"
+sumber_url: "https://repository.unikom.ac.id/61006/1/PEDOMAN%20PENULISAN%20MAKALAH%20ILMIAH.pdf"
+catatan: "Indentasi paragraf dan perataan teks tidak diatur pedoman ini."
+lokasi_nilai:
+  ukuran_kertas: "Panduan Umum, butir 2"
+  margin: "Panduan Umum, butir 4"
+  font: "Panduan Umum, butir 3"
+  spasi: "Panduan Umum, butir 2"
+aturan:
+  ukuran_kertas: {lebar_cm: 21.0, tinggi_cm: 29.7}
+  margin: {atas_cm: 1.5, bawah_cm: 1.5, kiri_cm: 1.5, kanan_cm: 1.5}
+  font: {nama: "Cambria", ukuran_isi_pt: 12}
+  spasi: {mode: multiple, baris_isi: 1.0}
+  indentasi: {awal_paragraf_cm: null}
+  perataan: {jenis: null}

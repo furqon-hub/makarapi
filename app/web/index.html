@@ -19,6 +19,8 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
 h2{font-size:1rem;margin:0 0 10px}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
+label[for=profilSel]{margin-bottom:4px}
+.note a{color:var(--pri)}
 .chip{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--pri);border-color:var(--pri);color:#fff}
 @media (prefers-color-scheme:dark){.chip[aria-pressed=true]{color:#10151f}}
@@ -47,6 +49,14 @@ input[type=text],input[type=number],select{width:100%;padding:9px;border:1px sol
 .found{color:var(--bad)}.should{color:var(--ok)}
 .hide{display:none}
 .k{font-style:italic}
+.grp{border:1px solid var(--line);border-radius:10px;margin-top:10px;padding:2px 12px}
+.grp summary{cursor:pointer;font-weight:600;padding:10px 0}
+.it{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap}
+.it input[type=checkbox]{width:20px;height:20px;flex:none}
+.it .lb{flex:1 1 150px;font-size:.92rem;color:var(--ink)}
+.it input[type=number],.it input[type=text],.it select{flex:0 0 140px;width:140px}
+.it input:disabled,.it select:disabled{opacity:.4}
+.man{font-size:.72rem;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:0 6px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -56,22 +66,17 @@ input[type=text],input[type=number],select{width:100%;padding:9px;border:1px sol
 
   <section class="card">
     <h2>1. Pilih pedoman</h2>
-    <div class="chips" id="profil"></div>
+    <label for="profilSel">Pedoman / kampus</label>
+    <select id="profilSel"></select>
     <p class="note" id="profilKet"></p>
+    <p class="note" id="profilSumber"></p>
     <div id="kustom" class="hide">
-      <div class="grid">
-        <div><label>Margin atas (cm)<input type="number" step="0.1" name="atas_cm"></label></div>
-        <div><label>Margin bawah (cm)<input type="number" step="0.1" name="bawah_cm"></label></div>
-        <div><label>Margin kiri (cm)<input type="number" step="0.1" name="kiri_cm"></label></div>
-        <div><label>Margin kanan (cm)<input type="number" step="0.1" name="kanan_cm"></label></div>
-        <div><label>Nama font<input type="text" name="font_nama" placeholder="Times New Roman"></label></div>
-        <div><label>Ukuran font (pt)<input type="number" step="0.5" name="font_ukuran_pt"></label></div>
-        <div><label>Spasi isi<input type="number" step="0.1" name="spasi_isi"></label></div>
-        <div><label>Indentasi paragraf (cm)<input type="number" step="0.1" name="indentasi_cm"></label></div>
-        <div style="grid-column:1/-1"><label>Perataan
-          <select name="perataan"><option value="">(ikut FEBI)</option><option value="justify">Rata kiri-kanan</option><option value="left">Rata kiri</option><option value="center">Tengah</option><option value="right">Rata kanan</option></select></label></div>
+      <p class="note">Centang aturan yang ingin diperiksa, lalu isi nilainya. Yang tidak dicentang tidak diperiksa dan tidak diubah.</p>
+      <div class="row">
+        <button type="button" class="btn sec" id="preFebi">Isi contoh (FEBI)</button>
+        <button type="button" class="btn sec" id="preKosong">Kosongkan semua</button>
       </div>
-      <p class="note">Kolom yang dikosongkan memakai nilai pedoman FEBI.</p>
+      <div id="ceklis"></div>
     </div>
   </section>
 
@@ -95,6 +100,7 @@ input[type=text],input[type=number],select{width:100%;padding:9px;border:1px sol
       <p class="note" id="ringkas"></p>
       <div class="tags" id="kat"></div>
     </div>
+    <div id="petunjuk" class="card hide"></div>
     <div class="card"><h2>Pelanggaran</h2><div id="vlist"></div></div>
     <div class="card"><h2>Kandidat istilah asing (perlu dicetak miring)</h2><div id="ilist"></div></div>
   </section>
@@ -118,17 +124,31 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
   }
 
   function pasangProfil(){
-    var box=$("profil"); box.innerHTML="";
+    var sel=$("profilSel");sel.innerHTML="";
+    var grup={},urut=[];
     profilData.forEach(function(p){
-      var b=el("button","chip",p.nama);b.type="button";
-      b.setAttribute("aria-pressed",String(p.id===profil));
-      b.onclick=function(){profil=p.id;pasangProfil()};
-      box.appendChild(b);
+      var k=p.kampus||"Lainnya";
+      if(!grup[k]){grup[k]=el("optgroup");grup[k].label=k;urut.push(k);}
+      var o=el("option",null,p.nama);o.value=p.id;grup[k].appendChild(o);
     });
+    urut.forEach(function(k){sel.appendChild(grup[k])});
+    sel.value=profil;
+    tampilKet();
+  }
+  function tampilKet(){
     var cur=profilData.filter(function(p){return p.id===profil})[0];
     $("profilKet").textContent=cur?cur.keterangan:"";
+    var sb=$("profilSumber");sb.textContent="";
+    if(cur && cur.tervalidasi===false && cur.id!=="kustom"){
+      sb.appendChild(el("b",null,"Belum diverifikasi manual. "));
+    }
+    if(cur && cur.sumber_url && /^https?:\/\//.test(cur.sumber_url)){
+      var a=el("a",null,"Lihat pedoman asli");a.href=cur.sumber_url;a.target="_blank";a.rel="noopener noreferrer";
+      sb.appendChild(a);
+    }
     $("kustom").classList.toggle("hide",profil!=="kustom");
   }
+  $("profilSel").onchange=function(){profil=this.value;tampilKet()};
 
   fetch(API+"/profil").then(function(r){return r.json()}).then(function(d){profilData=d;pasangProfil()})
    .catch(function(){galat("Server tidak terjangkau. Coba muat ulang halaman.")});
@@ -147,14 +167,83 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
   $("drop").ondragover=function(e){e.preventDefault()};
   $("drop").ondrop=function(e){e.preventDefault();pilih(e.dataTransfer.files[0])};
 
+
+  var SPEC=[
+   ["Halaman",[
+    ["halaman.kertas","sel","Ukuran kertas","A4",[["A4","A4"],["Letter","Letter"],["F4","F4"],["A5","A5"]]],
+    ["halaman.atas_cm","num","Margin atas (cm)",4],["halaman.bawah_cm","num","Margin bawah (cm)",3],
+    ["halaman.kiri_cm","num","Margin kiri (cm)",4],["halaman.kanan_cm","num","Margin kanan (cm)",3]]],
+   ["Teks isi",[
+    ["teks.font_nama","text","Jenis font","Times New Roman"],["teks.font_ukuran_pt","num","Ukuran font (pt)",12],
+    ["teks.spasi_isi","num","Spasi baris",1.5],["teks.indentasi_cm","num","Indentasi awal paragraf (cm)",1],
+    ["teks.perataan","sel","Perataan","justify",[["justify","Rata kiri-kanan"],["left","Rata kiri"],["center","Tengah"],["right","Rata kanan"]]]]],
+   ["Judul bab & subbab",[
+    ["judul_bab.kapital","bool","Judul bab HURUF KAPITAL"],["judul_bab.tebal","bool","Judul bab cetak tebal"],
+    ["judul_bab.rata_tengah","bool","Judul bab rata tengah"],["judul_subbab.tebal","bool","Judul subbab cetak tebal"]]],
+   ["Nomor halaman",[
+    ["nomor_halaman.posisi","sel","Bab bernomor halaman di","bawah_tengah",[["bawah_tengah","Bawah tengah"],["bawah_kanan","Bawah kanan"],["atas_kanan","Atas kanan"],["atas_tengah","Atas tengah"]]],
+    ["nomor_halaman.sampul_tanpa_nomor","bool","Sampul tanpa nomor halaman (manual)"]]],
+   ["Bagian wajib ada",[
+    ["bagian_wajib.kata_pengantar","bool","Kata Pengantar"],["bagian_wajib.abstrak","bool","Abstrak"],
+    ["bagian_wajib.daftar_isi","bool","Daftar Isi"],["bagian_wajib.daftar_tabel","bool","Daftar Tabel"],
+    ["bagian_wajib.daftar_gambar","bool","Daftar Gambar"],["bagian_wajib.daftar_pustaka","bool","Daftar Pustaka"],
+    ["bagian_wajib.lampiran","bool","Lampiran"]]],
+   ["Tabel & gambar",[
+    ["keterangan.tabel_posisi","sel","Keterangan tabel di","atas",[["atas","Atas tabel"],["bawah","Bawah tabel"]]],
+    ["keterangan.gambar_posisi","sel","Keterangan gambar di","bawah",[["bawah","Bawah gambar"],["atas","Atas gambar"]]]]],
+   ["Daftar pustaka",[
+    ["daftar_pustaka.hanging_cm","num","Baris kedua menjorok (cm)",1],["daftar_pustaka.urut_abjad","bool","Urut abjad (A-Z)"]]]
+  ];
+  var KEY="makarapi_kustom_v1", CEK={}; // path -> {on, inp}
+  function simpanKustom(){
+    try{var o={};Object.keys(CEK).forEach(function(k){o[k]={on:CEK[k].on.checked,v:CEK[k].inp?CEK[k].inp.value:""}});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}
+  }
+  function muatKustom(){
+    try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;
+      Object.keys(o).forEach(function(k){var c=CEK[k];if(!c)return;c.on.checked=!!o[k].on;if(c.inp&&o[k].v!=="")c.inp.value=o[k].v;segarkan(c)})}catch(e){}
+  }
+  function segarkan(c){if(c.inp)c.inp.disabled=!c.on.checked}
+  function bangunCeklis(){
+    var root=$("ceklis");root.innerHTML="";
+    SPEC.forEach(function(g,gi){
+      var d=document.createElement("details");d.className="grp";if(gi<2)d.open=true;
+      d.appendChild(el("summary",null,g[0]));
+      g[1].forEach(function(it){
+        var row=el("div","it"),on=document.createElement("input");on.type="checkbox";on.setAttribute("aria-label",it[2]);
+        var lb=el("span","lb",it[2]);row.appendChild(on);row.appendChild(lb);
+        var inp=null;
+        if(it[1]==="num"||it[1]==="text"){inp=document.createElement("input");inp.type=it[1]==="num"?"number":"text";if(it[1]==="num")inp.step="0.1";inp.value=it[3];inp.setAttribute("aria-label",it[2])}
+        else if(it[1]==="sel"){inp=document.createElement("select");it[4].forEach(function(o){var op=document.createElement("option");op.value=o[0];op.textContent=o[1];inp.appendChild(op)});inp.value=it[3];inp.setAttribute("aria-label",it[2])}
+        if(inp)row.appendChild(inp);
+        var c={on:on,inp:inp,tipe:it[1],def:it[3]};CEK[it[0]]=c;segarkan(c);
+        on.onchange=function(){segarkan(c);simpanKustom()};if(inp)inp.onchange=simpanKustom;
+        d.appendChild(row);
+      });
+      root.appendChild(d);
+    });
+    muatKustom();
+  }
+  function aturSemua(isi){
+    Object.keys(CEK).forEach(function(k){var c=CEK[k];c.on.checked=isi;if(c.inp&&isi)c.inp.value=c.def;segarkan(c)});simpanKustom();
+  }
+  function kustomJson(){
+    var j={};
+    Object.keys(CEK).forEach(function(k){
+      var c=CEK[k];if(!c.on.checked)return;
+      var p=k.split("."),g=p[0],n=p[1],v;
+      if(c.tipe==="bool")v=true;else{v=c.inp.value.trim().replace(",",".");if(v==="")return}
+      if(g==="bagian_wajib"){(j.bagian_wajib=j.bagian_wajib||[]).push(n);return}
+      (j[g]=j[g]||{})[n]=v;
+    });
+    return JSON.stringify(j);
+  }
+  $("preFebi").onclick=function(){aturSemua(true)};
+  $("preKosong").onclick=function(){aturSemua(false)};
+  bangunCeklis();
+
   function formData(){
     var f=new FormData();f.append("file",berkas,berkas.name);f.append("profil",profil);
-    if(profil==="kustom"){
-      document.querySelectorAll("#kustom [name]").forEach(function(i){
-        var v=i.value.trim().replace(",",".");
-        if(v!=="") f.append(i.name, i.name==="font_nama"||i.name==="perataan"?i.value.trim():v);
-      });
-    }
+    if(profil==="kustom") f.append("kustom_json",kustomJson());
     return f;
   }
 
@@ -179,10 +268,16 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
     $("ringkas").textContent=h.jumlah_pelanggaran+" pelanggaran dari "+h.total_pemeriksaan+" pemeriksaan.";
     var kat=$("kat");kat.innerHTML="";
     Object.keys(h.ringkasan_per_kategori).forEach(function(k){kat.appendChild(el("span","tag",k.replace(/_/g," ")+": "+h.ringkasan_per_kategori[k]))});
+    var pt=$("petunjuk");pt.classList.add("hide");pt.textContent="";
+    if(profil==="febi" && (h.ringkasan_per_kategori.spasi_baris||0)>=10){
+      pt.appendChild(el("b",null,"Petunjuk: "));
+      pt.appendChild(document.createTextNode("Banyak pelanggaran spasi baris ("+h.ringkasan_per_kategori.spasi_baris+"). Profil Makalah memakai spasi 1,5. Jika ini skripsi, proposal, atau sempro, coba profil \u201cFEBI - Skripsi / Sempro\u201d (spasi 2,0)."));
+      pt.classList.remove("hide");
+    }
     var vl=$("vlist");vl.innerHTML="";
     if(!h.pelanggaran.length) vl.appendChild(el("p","note","Tidak ada pelanggaran terdeteksi."));
     h.pelanggaran.forEach(function(v){
-      var d=el("div","v");d.appendChild(el("b",null,v.kategori.replace(/_/g," ")));
+      var d=el("div","v");d.appendChild(el("b",null,v.kategori.replace(/_/g," ")));if(v.perbaikan==="manual")d.appendChild(el("span","man","perbaiki manual"));
       d.appendChild(el("small",null,v.lokasi));
       var l=el("div");var a=el("span","found","Ditemukan: "+v.ditemukan);var b=el("span","should","  Seharusnya: "+v.seharusnya);
       l.appendChild(a);l.appendChild(document.createElement("br"));l.appendChild(b);d.appendChild(l);vl.appendChild(d);

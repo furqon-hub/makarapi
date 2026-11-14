@@ -1,0 +1,22 @@
+id: uin_datokarama_kti
+nama: "UIN Datokarama Palu - Karya Tulis Ilmiah (2020)"
+kampus: "UIN Datokarama Palu (eks-IAIN Palu)"
+jenis: "Skripsi, tesis, disertasi (Bab I juga menyebut makalah)"
+tahun: "2020 (edisi revisi)"
+tervalidasi: false
+sumber_judul: "Pedoman Penulisan Karya Tulis Ilmiah: Skripsi, Tesis dan Disertasi"
+sumber_url: "https://repository.uindatokarama.ac.id/3753/1/Pedoman%20KTI.pdf"
+catatan: "Spasi memakai 'exactly 24 pt' (bukan kelipatan). Perataan tidak tertulis eksplisit. Pedoman ini untuk karya tulis ilmiah akhir, bukan khusus makalah."
+lokasi_nilai:
+  ukuran_kertas: "Bab VI.A butir 1, hlm. 61"
+  margin: "Bab IV A.1.a-b, hlm. 26"
+  font: "Bab VI.A butir 2, hlm. 61"
+  spasi: "Bab IV A.3.c, hlm. 27 (exactly 24 pt)"
+  indentasi: "Bab IV A.1.c, hlm. 26 (1,25 cm)"
+aturan:
+  ukuran_kertas: {lebar_cm: 21.0, tinggi_cm: 29.7}
+  margin: {atas_cm: 4.0, bawah_cm: 3.0, kiri_cm: 4.0, kanan_cm: 3.0}
+  font: {nama: "Times New Roman", ukuran_isi_pt: 12}
+  spasi: {mode: exact, baris_isi: 24}
+  indentasi: {awal_paragraf_cm: 1.25}
+  perataan: {jenis: null}

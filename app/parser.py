@@ -176,22 +176,38 @@ def _resolve_font_size_pt(paragraph, document=None):
     return None
 
 
-def _resolve_line_spacing(paragraph):
-    """
-    Ambil line spacing (spasi baris). Dikembalikan sebagai angka
-    kelipatan (1.0, 1.5, 2.0, ...) kalau bentuknya "multiple",
-    atau dalam satuan point kalau pengguna set nilai pasti (fixed).
-    """
-    pf = paragraph.paragraph_format
-    if pf.line_spacing is None:
-        # coba warisi dari style
-        style = paragraph.style
-        while style is not None:
-            if style.paragraph_format.line_spacing is not None:
-                return style.paragraph_format.line_spacing
-            style = style.base_style
+def _baca_spasi(pf):
+    """(nilai, mode) dari satu paragraph_format, atau None kalau tidak di-set.
+    mode "multiple" = kelipatan (1.0, 1.5, ...), "exact" = tepat N pt,
+    "atleast" = minimal N pt. Pedoman sebagian kampus memakai 'exactly 24 pt',
+    yang TIDAK sama dengan kelipatan -- jangan dibandingkan langsung."""
+    v = pf.line_spacing
+    if v is None:
         return None
-    return pf.line_spacing
+    if hasattr(v, "pt"):  # Length -> exact / at least
+        from docx.enum.text import WD_LINE_SPACING
+        mode = "atleast" if pf.line_spacing_rule == WD_LINE_SPACING.AT_LEAST else "exact"
+        return (round(v.pt, 2), mode)
+    return (float(v), "multiple")
+
+
+def _resolve_line_spacing_info(paragraph):
+    """Spasi baris efektif (menelusuri style) sebagai (nilai, mode) atau (None, None)."""
+    hasil = _baca_spasi(paragraph.paragraph_format)
+    if hasil is not None:
+        return hasil
+    style = paragraph.style
+    while style is not None:
+        hasil = _baca_spasi(style.paragraph_format)
+        if hasil is not None:
+            return hasil
+        style = style.base_style
+    return (None, None)
+
+
+def _resolve_line_spacing(paragraph):
+    """Kompatibilitas: hanya nilai (angka), tanpa mode."""
+    return _resolve_line_spacing_info(paragraph)[0]
 
 
 import re
@@ -374,7 +390,8 @@ def get_paragraphs_info(doc: Document):
             "zona": zona_semua[idx],
             "font_name": _resolve_font_name(p, document=doc),
             "font_size_pt": _resolve_font_size_pt(p, document=doc),
-            "line_spacing": _resolve_line_spacing(p),
+            "line_spacing": _resolve_line_spacing_info(p)[0],
+            "line_spacing_mode": _resolve_line_spacing_info(p)[1],
             "first_line_indent_cm": emu_to_cm(pf.first_line_indent),
             "alignment": pf.alignment,  # objek enum, diterjemahkan di rule engine
             "is_italic_candidates": _find_non_italic_runs(p),

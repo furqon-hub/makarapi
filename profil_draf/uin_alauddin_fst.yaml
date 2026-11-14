@@ -1,0 +1,22 @@
+id: uin_alauddin_fst
+nama: "UIN Alauddin Makassar (FST) - Karya Tulis Ilmiah 2022"
+kampus: "UIN Alauddin Makassar (Fak. Sains dan Teknologi)"
+jenis: "Makalah, skripsi, tesis, disertasi, laporan penelitian"
+tahun: "2022"
+tervalidasi: false
+sumber_judul: "Pedoman Penulisan Karya Tulis Ilmiah: Makalah, Skripsi, Tesis, Disertasi, dan Laporan Penelitian"
+sumber_url: "https://bio.fst.uin-alauddin.ac.id/assets/file/PPKTI_Saintek_2022.pdf?1714215609"
+catatan: "Spasi memakai 'exactly 24 pt'. Font Times New Roman 12 tertulis sebagai 'dapat menggunakan'. Perataan tidak tertulis eksplisit. Pedoman memuat aturan abstrak yang tidak konsisten (12 pt vs 14-16 pt), tidak dipakai di sini."
+lokasi_nilai:
+  ukuran_kertas: "Bab VI.K butir 1, hlm. 69"
+  margin: "Bab IV A.1.a-b, hlm. 36"
+  font: "Bab VI.K butir 2, hlm. 69"
+  spasi: "Bab IV A.3.c, hlm. 37 (exactly 24 pt)"
+  indentasi: "Bab IV A.1.c, hlm. 36 (1,25 cm)"
+aturan:
+  ukuran_kertas: {lebar_cm: 21.0, tinggi_cm: 29.7}
+  margin: {atas_cm: 4.0, bawah_cm: 3.0, kiri_cm: 4.0, kanan_cm: 3.0}
+  font: {nama: "Times New Roman", ukuran_isi_pt: 12}
+  spasi: {mode: exact, baris_isi: 24}
+  indentasi: {awal_paragraf_cm: 1.25}
+  perataan: {jenis: null}

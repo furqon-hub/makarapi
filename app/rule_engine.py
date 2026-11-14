@@ -32,6 +32,31 @@ def load_rules(path="rules.yaml"):
         return yaml.safe_load(f)
 
 
+def aspek_aktif(rules):
+    """Aspek paragraf yang DIATUR profil ini (nilai bukan null). Nilai null berarti
+    'tidak diatur dalam pedoman': tidak diperiksa dan tidak diubah."""
+    aktif = set()
+    if rules["font"].get("nama") is not None:
+        aktif.add("font")
+    if rules["font"].get("ukuran_isi_pt") is not None:
+        aktif.add("ukuran")
+    if rules["spasi"].get("baris_isi") is not None:
+        aktif.add("spasi")
+    if rules["indentasi"].get("awal_paragraf_cm") is not None:
+        aktif.add("indentasi")
+    if rules["perataan"].get("jenis") is not None:
+        aktif.add("perataan")
+    return aktif
+
+
+def aspek_halaman_aktif(rules):
+    """Jumlah pemeriksaan halaman per section yang diatur profil:
+    ukuran kertas (1, jika lebar atau tinggi diatur) + tiap margin yang diatur."""
+    n = 1 if any(rules["ukuran_kertas"].get(k) is not None for k in ("lebar_cm", "tinggi_cm")) else 0
+    n += sum(1 for k in ("atas_cm", "bawah_cm", "kiri_cm", "kanan_cm") if rules["margin"].get(k) is not None)
+    return n
+
+
 def check_page_setup(page_setup_list, rules):
     """Cek ukuran kertas & margin tiap section."""
     violations = []
@@ -41,20 +66,22 @@ def check_page_setup(page_setup_list, rules):
     for sec in page_setup_list:
         loc = f"Section {sec['section_index']}"
 
-        if sec["lebar_cm"] is not None and abs(sec["lebar_cm"] - r["lebar_cm"]) > 0.1:
+        # Ukuran kertas = SATU pemeriksaan (lebar x tinggi), dilaporkan sebagai satu temuan
+        dims = [(k, r.get(k)) for k in ("lebar_cm", "tinggi_cm") if r.get(k) is not None]
+        if dims and any(sec[k] is not None and abs(sec[k] - t) > 0.1 for k, t in dims):
             violations.append({
                 "kategori": "ukuran_kertas",
                 "lokasi": loc,
-                "ditemukan": f"{sec['lebar_cm']} cm",
-                "seharusnya": f"{r['lebar_cm']} cm",
+                "ditemukan": " x ".join(f"{sec[k]}" for k, _ in dims) + " cm",
+                "seharusnya": " x ".join(f"{t}" for _, t in dims) + " cm",
                 "severity": "deterministik",
             })
 
         for sisi, key in [("atas", "margin_atas_cm"), ("bawah", "margin_bawah_cm"),
                            ("kiri", "margin_kiri_cm"), ("kanan", "margin_kanan_cm")]:
             nilai = sec[key]
-            target = m[f"{sisi}_cm"]
-            if nilai is not None and abs(nilai - target) > m["toleransi_cm"]:
+            target = m.get(f"{sisi}_cm")
+            if target is not None and nilai is not None and abs(nilai - target) > m["toleransi_cm"]:
                 violations.append({
                     "kategori": f"margin_{sisi}",
                     "lokasi": loc,
@@ -90,11 +117,12 @@ def check_paragraphs(paragraphs_info, rules):
     s_rules = rules["spasi"]
     i_rules = rules["indentasi"]
     a_rules = rules["perataan"]
+    aktif = aspek_aktif(rules)
 
     for p in paragraphs_info:
         loc = f"Paragraf #{p['index']} (\"{p['teks_cuplikan']}...\")"
         zona = p.get("zona", "isi")
-        aspek = ATURAN_PER_ZONA.get(zona, ())
+        aspek = set(ATURAN_PER_ZONA.get(zona, ())) & aktif
 
         cek_font = "font" in aspek
         cek_ukuran = "ukuran" in aspek
@@ -132,14 +160,27 @@ def check_paragraphs(paragraphs_info, rules):
                 })
 
         if cek_spasi and p["line_spacing"] is not None:
-            if abs(p["line_spacing"] - s_rules["baris_isi"]) > s_rules["toleransi"]:
+            mode_aturan = s_rules.get("mode", "multiple")
+            mode_dok = p.get("line_spacing_mode") or "multiple"
+            sat = lambda m: " pt (tepat)" if m == "exact" else " pt (minimal)" if m == "atleast" else " (kelipatan)"
+            if mode_dok != mode_aturan:
                 violations.append({
                     "kategori": "spasi_baris",
                     "lokasi": loc,
-                    "ditemukan": f"{p['line_spacing']}",
-                    "seharusnya": f"{s_rules['baris_isi']}",
-                    "severity": "deterministik",
+                    "ditemukan": f"{p['line_spacing']}{sat(mode_dok)}",
+                    "seharusnya": f"{s_rules['baris_isi']}{sat(mode_aturan)}",
+                    "severity": "perlu_verifikasi",  # jenis spasi berbeda, tidak setara langsung
                 })
+            else:
+                toleransi = 0.5 if mode_aturan != "multiple" else s_rules["toleransi"]
+                if abs(p["line_spacing"] - s_rules["baris_isi"]) > toleransi:
+                    violations.append({
+                        "kategori": "spasi_baris",
+                        "lokasi": loc,
+                        "ditemukan": f"{p['line_spacing']}{sat(mode_dok)}",
+                        "seharusnya": f"{s_rules['baris_isi']}{sat(mode_aturan)}",
+                        "severity": "deterministik",
+                    })
 
         if cek_indentasi and p["first_line_indent_cm"] is not None:
             if abs(p["first_line_indent_cm"] - i_rules["awal_paragraf_cm"]) > i_rules["toleransi_cm"]:
@@ -179,7 +220,7 @@ def compute_compliance_score(violations, total_checks):
     return round(max(lolos, 0) / total_checks * 100, 1)
 
 
-def run_all_checks(page_setup_list, paragraphs_info, rules):
+def run_all_checks(page_setup_list, paragraphs_info, rules, doc=None):
     violations = []
     violations += check_page_setup(page_setup_list, rules)
     violations += check_paragraphs(paragraphs_info, rules)
@@ -188,12 +229,21 @@ def run_all_checks(page_setup_list, paragraphs_info, rules):
     # (lihat check_paragraphs) -- kalau tidak, skor akan salah hitung
     # karena menganggap paragraf sampul/judul bab juga diperiksa 5 aspek,
     # padahal sengaja dilewati.
+    aktif = aspek_aktif(rules)
     total_checks = 0
     for p in paragraphs_info:
-        total_checks += len(ATURAN_PER_ZONA.get(p.get("zona", "isi"), ()))
+        total_checks += len(set(ATURAN_PER_ZONA.get(p.get("zona", "isi"), ())) & aktif)
         # jenis lain (judul, sampul, daftar isi, keterangan): tidak diperiksa
 
-    total_checks += len(page_setup_list) * 6
+    total_checks += len(page_setup_list) * aspek_halaman_aktif(rules)
+
+    for v in violations:
+        v.setdefault("perbaikan", "otomatis")
+    if doc is not None:
+        import ext_checks
+        v_ext, n_ext = ext_checks.jalankan(doc, paragraphs_info, rules)
+        violations += v_ext
+        total_checks += n_ext
 
     score = compute_compliance_score(violations, total_checks)
     return {
