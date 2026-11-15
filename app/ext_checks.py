@@ -198,6 +198,280 @@ def _keterangan_dokumen(badan, zona):
     return kt, kg, nt, ng
 
 
+
+# ---------- helper tambahan: bagian, daftar, butir, keterangan, tabel ----------
+
+TOC_STYLE = ("toc", "table of figures")
+PENANDA_BUTIR = [
+    ("decimal", re.compile(r"^\s*\d+[.)]\s+")),
+    ("lowerLetter", re.compile(r"^\s*[a-z][.)]\s+")),
+    ("bullet", re.compile(r"^\s*[•●◦\-–*]\s+")),
+]
+NSID_BUTIR = {"decimal": "4D414B42", "lowerLetter": "4D414B43", "bullet": "4D414B44"}
+
+
+def _jenis_penanda(teks):
+    for jenis, pola in PENANDA_BUTIR:
+        if pola.match(teks):
+            return jenis
+    return None
+
+
+def _judul_bagian(badan, zona):
+    """Elemen badan yang berupa judul bagian (Kata Pengantar, Daftar Isi, ...)."""
+    hasil = []
+    for e in badan:
+        if e["jenis"] != "p" or not e["teks"] or len(e["teks"]) > 60:
+            continue
+        if zona[e["idx"]] == "judul_bab" or P.TOC_PATTERN.search(e["teks"]):
+            continue
+        if P._nama_style(e["p"]).startswith(TOC_STYLE):
+            continue
+        if any(pola.match(e["teks"]) for _, pola in BAGIAN.values()):
+            hasil.append(e)
+    return hasil
+
+
+def _lebar_tersedia_cm(doc):
+    s = doc.sections[-1]
+    try:
+        return (s.page_width - s.left_margin - s.right_margin).cm
+    except Exception:
+        return 15.5
+
+
+def _ukuran_tabel(n_kolom, dasar):
+    if not dasar:
+        return None
+    kurang = 0 if n_kolom <= 4 else min(n_kolom - 4, 4)
+    return max(dasar - kurang, 8)
+
+
+def _tabel_dalam_bab(doc, badan, zona):
+    from docx.table import Table
+    mulai = next((k for k, e in enumerate(badan) if e["jenis"] == "p" and zona[e["idx"]] == "judul_bab"), None)
+    if mulai is None:
+        return []
+    return [Table(e["el"], doc._body) for e in badan[mulai:] if e["jenis"] == "tbl"]
+
+
+def _grid_twips(tbl):
+    return [int(g.get(qn("w:w")) or 0) for g in tbl._tbl.findall(qn("w:tblGrid") + "/" + qn("w:gridCol"))]
+
+
+def _tabel_ukuran_run(tbl):
+    ukuran = set()
+    for row in tbl.rows:
+        for c in row.cells:
+            for p in c.paragraphs:
+                for r in p.runs:
+                    if r.text.strip():
+                        ukuran.add(r.font.size.pt if r.font.size else None)
+    return ukuran
+
+
+def _format_isi_tabel(doc, tbl, nama, dasar):
+    n = len(_grid_twips(tbl)) or len(tbl.columns)
+    uk = _ukuran_tabel(n, dasar)
+    for row in tbl.rows:
+        for c in row.cells:
+            for p in c.paragraphs:
+                p.paragraph_format.first_line_indent = Cm(0)
+                p.paragraph_format.line_spacing = 1.0
+                for r in p.runs:
+                    _atur_font_run(r, nama, uk)
+    # lebar: skalakan kolom bila melebihi area teks
+    pakai = int(_lebar_tersedia_cm(doc) * 567)
+    grid = _grid_twips(tbl)
+    total = sum(grid)
+    if total > pakai and total > 0:
+        k = pakai / total
+        for g in tbl._tbl.findall(qn("w:tblGrid") + "/" + qn("w:gridCol")):
+            g.set(qn("w:w"), str(int(int(g.get(qn("w:w")) or 0) * k)))
+        for tc in tbl._tbl.iter(qn("w:tcW")):
+            if tc.get(qn("w:type")) in (None, "dxa"):
+                tc.set(qn("w:w"), str(int(int(tc.get(qn("w:w")) or 0) * k)))
+        tw = tbl._tbl.tblPr.find(qn("w:tblW")) if tbl._tbl.tblPr is not None else None
+        if tw is not None:
+            tw.set(qn("w:type"), "dxa")
+            tw.set(qn("w:w"), str(pakai))
+
+
+def _format_bagian_judul(p, nama, ukuran):
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.first_line_indent = Cm(0)
+    p.paragraph_format.left_indent = Cm(0)
+    for r in p.runs:
+        r.text = r.text.upper()
+        r.bold = True
+        _atur_font_run(r, nama, ukuran)
+
+
+def _format_daftar(doc, rules):
+    f = rules.get("font") or {}
+    nama, ukuran = f.get("nama"), f.get("ukuran_isi_pt")
+    spasi = (rules.get("spasi") or {}).get("baris_isi")
+    for sn in ("TOC 1", "TOC 2", "TOC 3", "Table of Figures"):
+        try:
+            st = doc.styles[sn]
+        except KeyError:
+            continue
+        _atur_font_style(st, nama, ukuran)
+        if spasi:
+            st.paragraph_format.line_spacing = spasi
+        st.paragraph_format.space_before = Pt(0)
+        st.paragraph_format.space_after = Pt(0)
+    for p in doc.paragraphs:
+        if P._nama_style(p).startswith(TOC_STYLE):
+            if spasi:
+                p.paragraph_format.line_spacing = spasi
+            for r in p.runs:
+                _atur_font_run(r, nama, ukuran)
+
+
+def _numbering_butir(doc, jenis):
+    """abstractNum untuk butir (decimal / lowerLetter / bullet); kembalikan abstractNumId."""
+    num_el = doc.part.numbering_part.element
+    nsid = NSID_BUTIR[jenis]
+    ada = num_el.xpath('w:abstractNum[w:nsid/@w:val="%s"]/@w:abstractNumId' % nsid)
+    if ada:
+        return int(ada[0])
+    from docx.oxml import parse_xml
+    ids = [int(x) for x in num_el.xpath("w:abstractNum/@w:abstractNumId")] or [0]
+    aid = max(ids) + 1
+    teks = {"decimal": "%1.", "lowerLetter": "%1.", "bullet": "•"}[jenis]
+    xml = (
+        '<w:abstractNum xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:abstractNumId="%d">'
+        '<w:nsid w:val="%s"/><w:multiLevelType w:val="hybridMultilevel"/>'
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="%s"/><w:lvlText w:val="%s"/><w:lvlJc w:val="left"/>'
+        '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>' % (aid, nsid, jenis, teks)
+    )
+    el = parse_xml(xml)
+    pertama_num = num_el.find(qn("w:num"))
+    if pertama_num is not None:
+        pertama_num.addprevious(el)
+    else:
+        num_el.append(el)
+    return aid
+
+
+def _num_baru(doc, abstract_id):
+    from docx.oxml import parse_xml
+    num_el = doc.part.numbering_part.element
+    nids = [int(x) for x in num_el.xpath("w:num/@w:numId")] or [0]
+    nid = max(nids) + 1
+    num_el.append(parse_xml(
+        '<w:num xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:numId="%d">'
+        '<w:abstractNumId w:val="%d"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>'
+        % (nid, abstract_id)))
+    return nid
+
+
+def _font_tanda_paragraf(p, nama, ukuran):
+    """Font nomor/poin otomatis mengikuti tanda paragraf (pPr/rPr)."""
+    ppr = p._p.get_or_add_pPr()
+    rpr = ppr.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        ujung = ppr.find(qn("w:sectPr"))
+        if ujung is None:
+            ujung = ppr.find(qn("w:pPrChange"))
+        if ujung is not None:
+            ujung.addprevious(rpr)
+        else:
+            ppr.append(rpr)
+    if nama:
+        rf = rpr.find(qn("w:rFonts"))
+        if rf is None:
+            rf = OxmlElement("w:rFonts")
+            rpr.insert(0, rf)
+        for a in ("ascii", "hAnsi", "eastAsia", "cs"):
+            rf.set(qn("w:" + a), nama)
+    if ukuran:
+        for tag in ("w:sz", "w:szCs"):
+            e = rpr.find(qn(tag))
+            if e is None:
+                e = OxmlElement(tag)
+                rpr.append(e)
+            e.set(qn("w:val"), str(int(round(ukuran * 2))))
+
+
+def _pasang_numpr(p, nid, ilvl=0):
+    ppr = p._p.get_or_add_pPr()
+    for old in ppr.findall(qn("w:numPr")):
+        ppr.remove(old)
+    numpr = OxmlElement("w:numPr")
+    il = OxmlElement("w:ilvl"); il.set(qn("w:val"), str(ilvl))
+    ni = OxmlElement("w:numId"); ni.set(qn("w:val"), str(nid))
+    numpr.append(il); numpr.append(ni)
+    sisip = None
+    for tag in ("w:suppressLineNumbers", "w:pBdr", "w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku",
+                "w:wordWrap", "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN",
+                "w:bidi", "w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
+                "w:contextualSpacing", "w:mirrorIndents", "w:suppressOverlap", "w:jc"):
+        sisip = ppr.find(qn(tag))
+        if sisip is not None:
+            break
+    if sisip is not None:
+        sisip.addprevious(numpr)
+    else:
+        ppr.append(numpr)
+
+
+def _butir_manual(doc, zona):
+    """[(paragraf, jenis_penanda)] butir yang penomorannya diketik manual."""
+    hasil = []
+    for i, p in enumerate(doc.paragraphs):
+        if zona[i] != "butir_daftar" or P.numpr_efektif(p) is not None:
+            continue
+        j = _jenis_penanda(p.text.strip())
+        if j:
+            hasil.append((p, j))
+    return hasil
+
+
+def _bab_baris_baru_ok(p):
+    teks = p.text
+    if P.numpr_efektif(p) is not None:
+        return teks.startswith("\n") or "\n" in teks.strip()[:1] or not teks.strip()
+    m = re.match(r"^\s*BAB\s+([IVXLCDM]+|\d+)[ \t]*(\n|$)", teks, re.I)
+    if m:
+        return True
+    return not AWALAN_BAB.match(teks)   # bukan pola "BAB X ..." -> tidak ada yang bisa dinilai
+
+
+def _paksa_baris_baru(p):
+    """'BAB I PENDAHULUAN' / nomor otomatis + judul -> nomor di baris atas, judul di bawahnya."""
+    def run_br(awal_teks, contoh):
+        r = OxmlElement("w:r")
+        if contoh is not None and contoh.find(qn("w:rPr")) is not None:
+            import copy
+            r.append(copy.deepcopy(contoh.find(qn("w:rPr"))))
+        if awal_teks:
+            t = OxmlElement("w:t")
+            t.text = awal_teks
+            t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            r.append(t)
+        r.append(OxmlElement("w:br"))
+        return r
+    runs = p._p.findall(qn("w:r"))
+    contoh = next((r for r in runs if r.find(qn("w:t")) is not None), runs[0] if runs else None)
+    ppr = p._p.pPr
+    idx = 1 if ppr is not None else 0
+    if P.numpr_efektif(p) is not None:
+        if not p.text.startswith("\n"):
+            p._p.insert(idx, run_br("", contoh))
+        return
+    m = AWALAN_BAB.match(p.text)
+    if not m:
+        return
+    awalan = p.text[:m.end()].strip()
+    if not p.text[m.end():].strip():
+        return
+    _hapus_awalan(p, AWALAN_BAB)
+    p._p.insert(idx, run_br(awalan, contoh))
+
+
 # ---------- pemeriksaan ----------
 
 def jalankan(doc, paragraphs_info, rules):
@@ -344,6 +618,98 @@ def jalankan(doc, paragraphs_info, rules):
                 tambah("keterangan_posisi", f"{tipe} dengan keterangan di sisi lain",
                        f"keterangan di {'bawah' if ada_bawah else 'atas'}", f"di {aturan}", "manual")
 
+    # -- judul BAB: nomor di atas, judul di bawah --
+    if jb.get("baris_baru"):
+        for i, p, lv in judul:
+            if lv == 1:
+                total += 1
+                if not _bab_baris_baru_ok(p):
+                    tambah("judul_bab_baris", f"Judul bab: \"{p.text.strip()[:50]}\"",
+                           "judul sejajar dengan nomor BAB", "judul di baris bawah nomor BAB", "otomatis")
+
+    # -- judul bagian (Kata Pengantar, Daftar Isi, ...) & isi daftar --
+    bg = t.get("bagian") or {}
+    if bg.get("judul_tengah"):
+        for e in _judul_bagian(badan, zona):
+            total += 1
+            p = e["p"]
+            salah = []
+            if p.paragraph_format.alignment != WD_ALIGN_PARAGRAPH.CENTER:
+                salah.append("tidak rata tengah")
+            if not (P._semua_tebal(p) or _style_tebal(p)):
+                salah.append("tidak tebal")
+            if e["teks"] != e["teks"].upper():
+                salah.append("bukan huruf kapital")
+            if salah:
+                tambah("bagian_judul", f"Judul bagian: \"{e['teks'][:40]}\"", ", ".join(salah),
+                       "rata tengah, tebal, KAPITAL", "otomatis")
+    if bg.get("isi_daftar") and (f_rules.get("nama") or f_rules.get("ukuran_isi_pt")):
+        spasi_t = (rules.get("spasi") or {}).get("baris_isi")
+        for i, p in enumerate(doc.paragraphs):
+            if not p.text.strip() or not P._nama_style(p).startswith(TOC_STYLE):
+                continue
+            total += 1
+            salah = []
+            nm = P._resolve_font_name(p, document=doc) or "Times New Roman"
+            uk = P._resolve_font_size_pt(p, document=doc)
+            if f_rules.get("nama") and nm != f_rules["nama"]:
+                salah.append(nm)
+            if f_rules.get("ukuran_isi_pt") and uk is not None and abs(uk - f_rules["ukuran_isi_pt"]) > 0.1:
+                salah.append(f"{uk:g} pt")
+            if spasi_t:
+                ls = P._resolve_line_spacing_info(p)
+                if ls[0] is None or ls[1] != "multiple" or abs(ls[0] - spasi_t) > 0.05:
+                    salah.append(f"spasi {ls[0] if ls[0] is not None else 'bawaan'}")
+            if salah:
+                tambah("daftar_format", f"Isi daftar: \"{p.text.strip()[:40]}\"", ", ".join(salah),
+                       f"{f_rules.get('nama') or ''} {f_rules.get('ukuran_isi_pt') or ''} spasi {spasi_t or ''}".strip(),
+                       "otomatis")
+
+    # -- butir/poin: penomoran otomatis --
+    if (t.get("butir") or {}).get("otomatis"):
+        for p, jenis in _butir_manual(doc, zona):
+            total += 1
+            tambah("butir_penomoran", f"Butir: \"{p.text.strip()[:40]}\"", "nomor/poin diketik manual",
+                   "penomoran otomatis", "otomatis")
+
+    # -- format keterangan & isi tabel --
+    kf = (t.get("keterangan") or {}).get("format")
+    if kf:
+        for e in badan:
+            if e["jenis"] != "p" or not (KAP_TABEL.match(e["teks"]) or KAP_GAMBAR.match(e["teks"])):
+                continue
+            if zona[e["idx"]] != "keterangan":
+                continue
+            total += 1
+            p = e["p"]
+            salah = []
+            if p.paragraph_format.alignment != WD_ALIGN_PARAGRAPH.CENTER:
+                salah.append("tidak rata tengah")
+            nm = P._resolve_font_name(p, document=doc) or "Times New Roman"
+            uk = P._resolve_font_size_pt(p, document=doc)
+            if f_rules.get("nama") and nm != f_rules["nama"]:
+                salah.append(nm)
+            if f_rules.get("ukuran_isi_pt") and uk is not None and abs(uk - f_rules["ukuran_isi_pt"]) > 0.1:
+                salah.append(f"{uk:g} pt")
+            if salah:
+                tambah("keterangan_format", f"\"{e['teks'][:40]}\"", ", ".join(salah),
+                       "rata tengah, font ikut isi", "otomatis")
+    if (t.get("tabel") or {}).get("font") and f_rules.get("ukuran_isi_pt"):
+        pakai = _lebar_tersedia_cm(doc) * 567
+        for n, tbl in enumerate(_tabel_dalam_bab(doc, badan, zona), 1):
+            total += 1
+            grid = _grid_twips(tbl)
+            target = _ukuran_tabel(len(grid) or len(tbl.columns), f_rules["ukuran_isi_pt"])
+            ukuran = _tabel_ukuran_run(tbl)
+            salah = []
+            if ukuran and ukuran != {target}:
+                salah.append("ukuran font " + "/".join("bawaan" if u is None else f"{u:g}" for u in sorted(ukuran, key=lambda x: x or 0)))
+            if sum(grid) > pakai + 20:
+                salah.append("tabel melebihi lebar halaman")
+            if salah:
+                tambah("tabel_isi", f"Tabel ke-{n}", ", ".join(salah),
+                       f"font {target:g} pt, muat dalam halaman", "otomatis")
+
     # -- daftar pustaka --
     dp = t.get("daftar_pustaka") or {}
     entri = [(i, p) for i, p in enumerate(doc.paragraphs) if zona[i] == "daftar_pustaka" and p.text.strip()]
@@ -357,6 +723,12 @@ def jalankan(doc, paragraphs_info, rules):
             if abs(kiri - h) > 0.1 or abs(baris1 + h) > 0.1:
                 tambah("daftar_pustaka_hanging", f"Pustaka: \"{p.text.strip()[:40]}\"",
                        f"kiri {kiri:.1f} cm, baris pertama {baris1:.1f} cm", f"menggantung {h} cm", "otomatis")
+    if dp.get("justify"):
+        for i, p in entri:
+            total += 1
+            if p.paragraph_format.alignment != WD_ALIGN_PARAGRAPH.JUSTIFY:
+                tambah("daftar_pustaka_rata", f"Pustaka: \"{p.text.strip()[:40]}\"", "tidak rata kiri-kanan",
+                       "justify", "otomatis")
     if dp.get("urut_abjad") and len(entri) > 1:
         total += 1
         kunci = [re.sub(r"[^a-z0-9]", "", p.text.lower()) for _, p in entri]
@@ -443,7 +815,7 @@ def _numbering_judul(doc):
     xml = (
         '<w:abstractNum xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:abstractNumId="%d">'
         '<w:nsid w:val="4D414B41"/><w:multiLevelType w:val="multilevel"/>'
-        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:suff w:val="space"/>'
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:suff w:val="nothing"/>'
         '<w:lvlText w:val="BAB %%1"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="0" w:firstLine="0"/></w:pPr></w:lvl>'
         '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:isLgl/><w:suff w:val="tab"/>'
         '<w:lvlText w:val="%%1.%%2"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="567" w:hanging="567"/></w:pPr></w:lvl>'
@@ -733,6 +1105,11 @@ def perbaiki(doc, rules):
                         Paragraph(el, asal).alignment = _RATA[rata]
 
     dp = t.get("daftar_pustaka") or {}
+    if dp.get("justify"):
+        zona = P.classify_zones_untuk_italic(doc)
+        for i, p in enumerate(doc.paragraphs):
+            if zona[i] == "daftar_pustaka" and p.text.strip():
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     if dp.get("hanging_cm") is not None:
         h = float(dp["hanging_cm"])
         zona = P.classify_zones_untuk_italic(doc)
@@ -742,4 +1119,69 @@ def perbaiki(doc, rules):
                 p.paragraph_format.first_line_indent = Cm(-h)
 
     _buat_daftar(doc, rules, t)
+    _perbaiki_lain(doc, rules, t)
     _atur_halaman_baru(doc, t)
+
+
+def _perbaiki_lain(doc, rules, t):
+    f = rules.get("font") or {}
+    nama, ukuran = f.get("nama"), f.get("ukuran_isi_pt")
+    spasi = (rules.get("spasi") or {}).get("baris_isi")
+    zona = P.classify_zones_untuk_italic(doc)
+    badan = _urutan_badan(doc)
+
+    # butir/poin -> penomoran otomatis (kelompokkan butir berurutan sejenis)
+    if (t.get("butir") or {}).get("otomatis"):
+        manual = {id(p._p): (p, j) for p, j in _butir_manual(doc, zona)}
+        kelompok_jenis, nid, sebelumnya = None, None, None
+        for e in badan:
+            if e["jenis"] != "p" or id(e["p"]._p) not in manual:
+                if e["jenis"] == "tbl" or e.get("teks") or e.get("gambar"):
+                    sebelumnya = None      # konten lain memutus kelompok butir
+                continue
+            p, jenis = manual[id(e["p"]._p)]
+            if sebelumnya != jenis:
+                nid = _num_baru(doc, _numbering_butir(doc, jenis))
+            sebelumnya = jenis
+            pola = dict(PENANDA_BUTIR)[jenis]
+            _hapus_awalan(p, pola)
+            _pasang_numpr(p, nid)
+            p.paragraph_format.left_indent = None
+            p.paragraph_format.first_line_indent = None
+            for r in p.runs:
+                _atur_font_run(r, nama, ukuran)
+            _font_tanda_paragraf(p, nama, ukuran)
+            if spasi:
+                p.paragraph_format.line_spacing = spasi
+
+    # judul BAB: nomor di atas, judul di bawah
+    if (t.get("judul_bab") or {}).get("baris_baru"):
+        for i, p, lv in _daftar_judul(doc, zona):
+            if lv == 1 and not _bab_baris_baru_ok(p):
+                _paksa_baris_baru(p)
+
+    # judul bagian & isi daftar
+    bg = t.get("bagian") or {}
+    if bg.get("judul_tengah"):
+        for e in _judul_bagian(badan, zona):
+            _format_bagian_judul(e["p"], nama, ukuran)
+    if bg.get("isi_daftar"):
+        _format_daftar(doc, rules)
+
+    # keterangan & isi tabel
+    if (t.get("keterangan") or {}).get("format"):
+        for e in badan:
+            if e["jenis"] != "p" or zona[e["idx"]] != "keterangan":
+                continue
+            p = e["p"]
+            for r in p.runs:
+                _atur_font_run(r, nama, ukuran)
+            if KAP_TABEL.match(e["teks"]) or KAP_GAMBAR.match(e["teks"]):
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.paragraph_format.first_line_indent = Cm(0)
+                p.paragraph_format.keep_with_next = True
+            if spasi:
+                p.paragraph_format.line_spacing = spasi
+    if (t.get("tabel") or {}).get("font") and ukuran:
+        for tbl in _tabel_dalam_bab(doc, badan, zona):
+            _format_isi_tabel(doc, tbl, nama, ukuran)

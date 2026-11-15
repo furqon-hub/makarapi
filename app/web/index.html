@@ -179,7 +179,8 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
     ["teks.perataan","sel","Perataan","justify",[["justify","Rata kiri-kanan"],["left","Rata kiri"],["center","Tengah"],["right","Rata kanan"]]]]],
    ["Judul bab & subbab",[
     ["judul_bab.kapital","bool","Judul bab HURUF KAPITAL"],["judul_bab.tebal","bool","Judul bab cetak tebal"],
-    ["judul_bab.rata_tengah","bool","Judul bab rata tengah"],["judul_subbab.tebal","bool","Judul subbab cetak tebal"],
+    ["judul_bab.rata_tengah","bool","Judul bab rata tengah"],
+    ["judul_bab.baris_baru","bool","Judul BAB di baris bawah nomor (BAB I / PENDAHULUAN)"],["judul_subbab.tebal","bool","Judul subbab cetak tebal"],
     ["judul.heading","bool","Pakai gaya Heading (agar masuk Daftar Isi)"],
     ["judul.penomoran","bool","Penomoran otomatis (BAB I, 1.1, 1.1.1)"],
     ["judul.font_isi","bool","Font & ukuran judul sama dengan isi"]]],
@@ -189,6 +190,11 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
    ["Nomor halaman",[
     ["nomor_halaman.posisi","sel","Bab bernomor halaman di","bawah_tengah",[["bawah_tengah","Bawah tengah"],["bawah_kanan","Bawah kanan"],["atas_kanan","Atas kanan"],["atas_tengah","Atas tengah"]]],
     ["nomor_halaman.sampul_tanpa_nomor","bool","Sampul tanpa nomor halaman (manual)"]]],
+   ["Judul & isi bagian awal",[
+    ["bagian.judul_tengah","bool","Judul Kata Pengantar, Daftar Isi, dst. rata tengah, tebal, kapital"],
+    ["bagian.isi_daftar","bool","Isi Daftar Isi/Tabel/Gambar ikut font & spasi isi"]]],
+   ["Butir / poin",[
+    ["butir.otomatis","bool","Butir bernomor atau berpoin pakai penomoran otomatis"]]],
    ["Bagian wajib ada",[
     ["bagian_wajib.kata_pengantar","bool","Kata Pengantar"],["bagian_wajib.abstrak","bool","Abstrak"],
     ["bagian_wajib.daftar_isi","bool","Daftar Isi (dibuatkan otomatis)"],["bagian_wajib.daftar_tabel","bool","Daftar Tabel (jika ada tabel, dibuatkan otomatis)"],
@@ -196,9 +202,11 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
     ["bagian_wajib.lampiran","bool","Lampiran"]]],
    ["Tabel & gambar",[
     ["keterangan.tabel_posisi","sel","Keterangan tabel di","atas",[["atas","Atas tabel"],["bawah","Bawah tabel"]]],
-    ["keterangan.gambar_posisi","sel","Keterangan gambar di","bawah",[["bawah","Bawah gambar"],["atas","Atas gambar"]]]]],
+    ["keterangan.gambar_posisi","sel","Keterangan gambar di","bawah",[["bawah","Bawah gambar"],["atas","Atas gambar"]]],
+    ["keterangan.format","bool","Keterangan tabel/gambar rata tengah, font ikut isi"],
+    ["tabel.font","bool","Isi tabel ikut font isi, mengecil otomatis bila tabel lebar"]]],
    ["Daftar pustaka",[
-    ["daftar_pustaka.hanging_cm","num","Baris kedua menjorok (cm)",1],["daftar_pustaka.urut_abjad","bool","Urut abjad (A-Z)"]]]
+    ["daftar_pustaka.hanging_cm","num","Baris kedua menjorok (cm)",1],["daftar_pustaka.urut_abjad","bool","Urut abjad (A-Z)"],["daftar_pustaka.justify","bool","Rata kiri-kanan (justify)"]]]
   ];
   var KEY="makarapi_kustom_v1", CEK={}; // path -> {on, inp}
   function simpanKustom(){
