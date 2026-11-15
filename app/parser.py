@@ -227,6 +227,47 @@ TOC_PATTERN = re.compile(r"(\.{3,}|\t)\s*\d+\s*$")
 AKHIR_KALIMAT = re.compile(r"[.!?][\"\u201d\u2019)\]]*$")
 
 
+def numpr_efektif(p):
+    """(numId, ilvl) penomoran otomatis efektif paragraf (langsung atau dari style), atau None."""
+    def baca(ppr):
+        if ppr is None or ppr.numPr is None:
+            return None
+        n = ppr.numPr
+        nid = n.numId.val if n.numId is not None else None
+        lv = n.ilvl.val if n.ilvl is not None else 0
+        return (nid, lv)
+    r = baca(p._p.pPr)
+    if r is None:
+        st = p.style
+        while st is not None and r is None:
+            r = baca(st.element.pPr)
+            st = st.base_style
+    if r is None or not r[0]:
+        return None
+    return r
+
+
+def teks_penomoran(p, numpr):
+    """lvlText definisi penomoran (mis. 'BAB %1') atau None."""
+    try:
+        el = p.part.numbering_part.element
+        aid = el.xpath('w:num[@w:numId="%s"]/w:abstractNumId/@w:val' % numpr[0])
+        if not aid:
+            return None
+        t = el.xpath('w:abstractNum[@w:abstractNumId="%s"]/w:lvl[@w:ilvl="%s"]/w:lvlText/@w:val' % (aid[0], numpr[1]))
+        return t[0] if t else None
+    except Exception:
+        return None
+
+
+def bab_bernomor_otomatis(p):
+    n = numpr_efektif(p)
+    if n is None:
+        return False
+    t = teks_penomoran(p, n)
+    return bool(t) and t.strip().lower().startswith("bab")
+
+
 def _nama_style(p):
     try:
         return (p.style.name or "").lower()
@@ -266,7 +307,7 @@ def _jenis_paragraf(p, teks, zona):
     tengah = pf.alignment == _ALIGN.CENTER
     di_awal = zona == "awal"
 
-    if nama.startswith("toc") or TOC_PATTERN.search(teks):
+    if nama.startswith(("toc", "table of figures", "daftar tabel", "daftar gambar")) or TOC_PATTERN.search(teks):
         return "awal"
     if nama.startswith(("heading", "judul", "title", "subtitle")):
         return "awal" if di_awal else "subjudul"
@@ -331,10 +372,13 @@ def _classify_zones(doc: Document):
         if not teks:
             hasil.append(zona)
             continue
+        if _nama_style(p).startswith(("toc", "table of figures")):
+            hasil.append("awal")      # baris daftar isi/tabel/gambar: bukan judul bab sungguhan
+            continue
         judul_style = _nama_style(p).startswith(("heading", "judul", "title"))
         boleh_judul = len(teks) <= 80 or judul_style
 
-        if boleh_judul and BAB_PATTERN.match(teks):
+        if (boleh_judul and BAB_PATTERN.match(teks)) or bab_bernomor_otomatis(p):
             zona = "isi"
             hasil.append("judul_bab")
             continue

@@ -132,21 +132,14 @@ def check_paragraphs(paragraphs_info, rules):
 
         if not cek_font:
             pass  # judul, sampul, daftar isi, dst. tidak diperiksa fontnya
-        elif p["font_name"] and p["font_name"] != f_rules["nama"]:
+        elif (p["font_name"] or "Times New Roman") != f_rules["nama"]:
+            # font tidak tertulis di dokumen -> Word memakai Times New Roman (bawaan)
             violations.append({
                 "kategori": "jenis_font",
                 "lokasi": loc,
-                "ditemukan": p["font_name"],
+                "ditemukan": p["font_name"] or "Times New Roman (bawaan Word)",
                 "seharusnya": f_rules["nama"],
                 "severity": "deterministik",
-            })
-        elif p["font_name"] is None:
-            violations.append({
-                "kategori": "jenis_font",
-                "lokasi": loc,
-                "ditemukan": "tidak terdeteksi (perlu cek manual)",
-                "seharusnya": f_rules["nama"],
-                "severity": "perlu_verifikasi",
             })
 
         if cek_ukuran and p["font_size_pt"] is not None:
