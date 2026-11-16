@@ -399,7 +399,7 @@ def _classify_zones(doc: Document):
 # tidak diratakan, dan tidak diubah spasi/ukurannya.
 ATURAN_PER_ZONA = {
     "isi":            ("font", "ukuran", "spasi", "indentasi", "perataan"),
-    "kalimat_awal":   ("font", "ukuran", "indentasi", "perataan"),
+    "kalimat_awal":   ("font", "ukuran", "spasi", "indentasi", "perataan"),
     "butir_daftar":   ("font", "ukuran", "spasi"),
     "daftar_pustaka": ("font", "ukuran"),
 }

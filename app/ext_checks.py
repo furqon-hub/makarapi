@@ -311,20 +311,23 @@ def _format_daftar(doc, rules):
     f = rules.get("font") or {}
     nama, ukuran = f.get("nama"), f.get("ukuran_isi_pt")
     spasi = (rules.get("spasi") or {}).get("baris_isi")
-    for sn in ("TOC 1", "TOC 2", "TOC 3", "Table of Figures"):
-        try:
-            st = doc.styles[sn]
-        except KeyError:
+    for sn in ("toc 1", "toc 2", "toc 3", "table of figures"):
+        st = _cari_style(doc, sn)
+        if st is None and sn.startswith("toc"):
+            st = _style(doc, sn)
+        if st is None:
             continue
         _atur_font_style(st, nama, ukuran)
         if spasi:
             st.paragraph_format.line_spacing = spasi
+        st.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         st.paragraph_format.space_before = Pt(0)
         st.paragraph_format.space_after = Pt(0)
     for p in doc.paragraphs:
         if P._nama_style(p).startswith(TOC_STYLE):
             if spasi:
                 p.paragraph_format.line_spacing = spasi
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             for r in p.runs:
                 _atur_font_run(r, nama, ukuran)
 
@@ -660,6 +663,13 @@ def jalankan(doc, paragraphs_info, rules):
                 ls = P._resolve_line_spacing_info(p)
                 if ls[0] is None or ls[1] != "multiple" or abs(ls[0] - spasi_t) > 0.05:
                     salah.append(f"spasi {ls[0] if ls[0] is not None else 'bawaan'}")
+            ali = p.paragraph_format.alignment
+            st_ = p.style
+            while ali is None and st_ is not None:
+                ali = st_.paragraph_format.alignment
+                st_ = st_.base_style
+            if ali != WD_ALIGN_PARAGRAPH.JUSTIFY:
+                salah.append("tidak rata kiri-kanan")
             if salah:
                 tambah("daftar_format", f"Isi daftar: \"{p.text.strip()[:40]}\"", ", ".join(salah),
                        f"{f_rules.get('nama') or ''} {f_rules.get('ukuran_isi_pt') or ''} spasi {spasi_t or ''}".strip(),
@@ -751,16 +761,31 @@ def _style_tebal(p):
 
 # ---------- perbaikan ----------
 
+_ID_BAWAAN = {"toc 1": "TOC1", "toc 2": "TOC2", "toc 3": "TOC3", "table of figures": "TableofFigures"}
+
+
+def _cari_style(doc, nama):
+    for st in doc.styles:
+        if (st.name or "").lower() == nama.lower() and st.type == WD_STYLE_TYPE.PARAGRAPH:
+            return st
+    return None
+
+
 def _style(doc, nama, dasar="Normal"):
-    try:
-        return doc.styles[nama]
-    except KeyError:
-        st = doc.styles.add_style(nama, WD_STYLE_TYPE.PARAGRAPH)
-        try:
-            st.base_style = doc.styles[dasar]
-        except KeyError:
-            pass
+    st = _cari_style(doc, nama)
+    if st is not None:
         return st
+    bawaan = nama.lower() in _ID_BAWAAN
+    st = doc.styles.add_style(nama.lower() if bawaan else nama, WD_STYLE_TYPE.PARAGRAPH)
+    if bawaan:
+        st.style_id = _ID_BAWAAN[nama.lower()]
+        if nama.lower() in ("toc 2", "toc 3"):
+            st.paragraph_format.left_indent = Cm(0.5 if nama.lower() == "toc 2" else 1.0)
+    try:
+        st.base_style = doc.styles[dasar]
+    except KeyError:
+        pass
+    return st
 
 
 def _atur_font_style(st, nama, ukuran, tebal=None):
@@ -929,10 +954,7 @@ def _terapkan_judul(doc, zona, rules, t):
                 pf.left_indent = None
                 pf.first_line_indent = None
         if pakai_heading:
-            try:
-                p.style = doc.styles[f"Heading {lv}"]
-            except KeyError:
-                pass
+            p.style = _style(doc, f"Heading {lv}")
         if jd.get("font_isi"):
             for r in p.runs:
                 _atur_font_run(r, nama, ukuran)
@@ -980,10 +1002,12 @@ def _bangun_daftar(doc, sebelum_el, judul_teks, instr, entri, nama, ukuran):
     h.paragraph_format.page_break_before = True
     sebelum_el.addprevious(h._p)
     teks_awal = entri or ["(Klik kanan di sini, lalu pilih Perbarui Bidang)"]
-    st = _style(doc, "TOC 1")
     paras = []
     for k, tx in enumerate(teks_awal):
-        p = doc.add_paragraph(style=st)
+        lv = 1
+        if isinstance(tx, tuple):
+            lv, tx = tx
+        p = doc.add_paragraph(style=_style(doc, f"toc {lv}"))
         if k == 0:
             _fld(p, "begin")
             ri = p.add_run()
@@ -1044,7 +1068,7 @@ def _buat_daftar(doc, rules, t):
                 for j in range(lv, 3):
                     cn[j] = 0
                 label = (f"BAB {_romawi(cn[0])} " if lv == 1 else ".".join(str(c) for c in cn[:lv]) + " ")
-            entri.append(("    " * (lv - 1)) + label + tx)
+            entri.append((lv, label + tx))
         _bangun_daftar(doc, bab["el"], "DAFTAR ISI", ' TOC \\o "1-3" \\h \\z \\u ', entri, nama, ukuran)
         dibuat = True
     for kunci, daftar, ada_n, nm_style, judul_t in (
