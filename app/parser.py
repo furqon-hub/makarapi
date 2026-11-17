@@ -400,7 +400,7 @@ def _classify_zones(doc: Document):
 ATURAN_PER_ZONA = {
     "isi":            ("font", "ukuran", "spasi", "indentasi", "perataan"),
     "kalimat_awal":   ("font", "ukuran", "spasi", "indentasi", "perataan"),
-    "butir_daftar":   ("font", "ukuran", "spasi"),
+    "butir_daftar":   ("font", "ukuran", "spasi", "perataan"),
     "daftar_pustaka": ("font", "ukuran"),
 }
 

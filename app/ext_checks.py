@@ -297,10 +297,16 @@ def _format_isi_tabel(doc, tbl, nama, dasar):
             tw.set(qn("w:w"), str(pakai))
 
 
-def _format_bagian_judul(p, nama, ukuran):
+def _format_bagian_judul(doc, p, nama, ukuran, spasi=None):
+    p.style = _style(doc, "Heading 1")
+    ppr = p._p.get_or_add_pPr()
+    if ppr.find(qn("w:numPr")) is None:      # cegah Heading 1 yang bernomor memberi "BAB" pada bagian ini
+        _pasang_numpr(p, 0)
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.first_line_indent = Cm(0)
     p.paragraph_format.left_indent = Cm(0)
+    if spasi:
+        p.paragraph_format.line_spacing = spasi
     for r in p.runs:
         r.text = r.text.upper()
         r.bold = True
@@ -537,6 +543,11 @@ def jalankan(doc, paragraphs_info, rules):
                     salah.append(f"{nm}")
                 if ukuran_t and uk is not None and abs(uk - ukuran_t) > 0.1:
                     salah.append(f"{uk:g} pt")
+                spasi_t = (rules.get("spasi") or {}).get("baris_isi")
+                if spasi_t:
+                    ls = P._resolve_line_spacing_info(p)
+                    if ls[0] is None or ls[1] != "multiple" or abs(ls[0] - spasi_t) > 0.05:
+                        salah.append(f"spasi {ls[0] if ls[0] is not None else 'bawaan'}")
                 if salah:
                     tambah("judul_font", lok, ", ".join(salah),
                            f"{nama_t or ''} {ukuran_t:g} pt".strip() if ukuran_t else nama_t, "otomatis")
@@ -572,6 +583,8 @@ def jalankan(doc, paragraphs_info, rules):
                 continue
             adalah_bab = zona[e["idx"]] == "judul_bab"
             adalah_bagian = (not adalah_bab and len(e["teks"]) <= 60 and not P.TOC_PATTERN.search(e["teks"])
+                         and not P._nama_style(e["p"]).startswith(TOC_STYLE)
+                             and not P._nama_style(e["p"]).startswith(TOC_STYLE)
                              and any(pola.match(e["teks"]) for _, pola in BAGIAN.values()))
             if (adalah_bab and hb.get("bab")) or (adalah_bagian and hb.get("bagian")):
                 total += 1
@@ -619,7 +632,7 @@ def jalankan(doc, paragraphs_info, rules):
                        f"keterangan {tipe.lower()} di {aturan}", "manual")
             elif (aturan == "atas" and not ada_atas) or (aturan == "bawah" and not ada_bawah):
                 tambah("keterangan_posisi", f"{tipe} dengan keterangan di sisi lain",
-                       f"keterangan di {'bawah' if ada_bawah else 'atas'}", f"di {aturan}", "manual")
+                       f"keterangan di {'bawah' if ada_bawah else 'atas'}", f"di {aturan}", "otomatis")
 
     # -- judul BAB: nomor di atas, judul di bawah --
     if jb.get("baris_baru"):
@@ -643,9 +656,11 @@ def jalankan(doc, paragraphs_info, rules):
                 salah.append("tidak tebal")
             if e["teks"] != e["teks"].upper():
                 salah.append("bukan huruf kapital")
+            if not P._nama_style(p).startswith("heading 1"):
+                salah.append("bukan Heading 1 (tidak masuk Daftar Isi)")
             if salah:
                 tambah("bagian_judul", f"Judul bagian: \"{e['teks'][:40]}\"", ", ".join(salah),
-                       "rata tengah, tebal, KAPITAL", "otomatis")
+                       "rata tengah, tebal, KAPITAL, Heading 1", "otomatis")
     if bg.get("isi_daftar") and (f_rules.get("nama") or f_rules.get("ukuran_isi_pt")):
         spasi_t = (rules.get("spasi") or {}).get("baris_isi")
         for i, p in enumerate(doc.paragraphs):
@@ -909,15 +924,19 @@ def _terapkan_judul(doc, zona, rules, t):
     f = rules.get("font") or {}
     nama, ukuran = f.get("nama"), f.get("ukuran_isi_pt")
     judul = _daftar_judul(doc, zona)
-    pakai_heading = bool(jd.get("heading")) or ("daftar_isi" in (t.get("bagian_wajib") or []))
+    bg = t.get("bagian") or {}
+    spasi = (rules.get("spasi") or {}).get("baris_isi")
+    pakai_heading = bool(jd.get("heading")) or ("daftar_isi" in (t.get("bagian_wajib") or [])) or bool(bg.get("judul_tengah"))
     nid = None
     if jd.get("penomoran") and any(P.numpr_efektif(p) is None for _, p, _ in judul):
         nid = _numbering_judul(doc)
     if jd.get("font_isi") or pakai_heading:
         for lv in (1, 2, 3):
             st = _style(doc, f"Heading {lv}")
-            if jd.get("font_isi"):
-                _atur_font_style(st, nama, ukuran, True if (lv == 1 and jb.get("tebal")) or (lv > 1 and js.get("tebal")) else None)
+            if jd.get("font_isi") or (bg.get("judul_tengah") and lv == 1):
+                _atur_font_style(st, nama, ukuran, True if (lv == 1 and (jb.get("tebal") or bg.get("judul_tengah"))) or (lv > 1 and js.get("tebal")) else None)
+            if jd.get("font_isi") and spasi:
+                st.paragraph_format.line_spacing = spasi
             ppr = st.element.get_or_add_pPr()
             if ppr.find(qn("w:outlineLvl")) is None:
                 ol = OxmlElement("w:outlineLvl")
@@ -958,6 +977,8 @@ def _terapkan_judul(doc, zona, rules, t):
         if jd.get("font_isi"):
             for r in p.runs:
                 _atur_font_run(r, nama, ukuran)
+            if spasi:
+                p.paragraph_format.line_spacing = spasi
         if lv == 1:
             if jb.get("kapital"):
                 for r in p.runs:
@@ -1057,9 +1078,23 @@ def _buat_daftar(doc, rules, t):
     ada = lambda k: any(BAGIAN[k][1].match(x) for x in judul_pendek)
     dibuat = False
 
+    bagian_h1 = bool((t.get("bagian") or {}).get("judul_tengah"))
+    akan_tabel = "daftar_tabel" in wajib and (kt or nt) and not ada("daftar_tabel")
+    akan_gambar = "daftar_gambar" in wajib and (kg or ng) and not ada("daftar_gambar")
     if "daftar_isi" in wajib and not ada("daftar_isi"):
         entri, cn = [], [0, 0, 0]
+        pos_bab = bab["idx"]
+        ekstra = []
+        if bagian_h1:
+            for e in _judul_bagian(badan, zona):
+                ekstra.append((e["idx"], e["teks"].upper()))
+            ekstra.append((pos_bab - 0.5, "DAFTAR ISI"))
+            if akan_tabel:
+                ekstra.append((pos_bab - 0.4, "DAFTAR TABEL"))
+            if akan_gambar:
+                ekstra.append((pos_bab - 0.3, "DAFTAR GAMBAR"))
         pakai_nomor = bool((t.get("judul") or {}).get("penomoran"))
+        semua = []
         for i, p, lv in _daftar_judul(doc, zona):
             tx = p.text.strip()
             label = ""
@@ -1068,7 +1103,9 @@ def _buat_daftar(doc, rules, t):
                 for j in range(lv, 3):
                     cn[j] = 0
                 label = (f"BAB {_romawi(cn[0])} " if lv == 1 else ".".join(str(c) for c in cn[:lv]) + " ")
-            entri.append((lv, label + tx))
+            semua.append((i, (lv, label + tx.replace("\n", " "))))
+        semua += [(i, (1, tx)) for i, tx in ekstra]
+        entri = [x for _, x in sorted(semua, key=lambda z: z[0])]
         _bangun_daftar(doc, bab["el"], "DAFTAR ISI", ' TOC \\o "1-3" \\h \\z \\u ', entri, nama, ukuran)
         dibuat = True
     for kunci, daftar, ada_n, nm_style, judul_t in (
@@ -1096,6 +1133,8 @@ def _atur_halaman_baru(doc, t):
             continue
         adalah_bab = zona[e["idx"]] == "judul_bab"
         adalah_bagian = (not adalah_bab and len(e["teks"]) <= 60 and not P.TOC_PATTERN.search(e["teks"])
+                         and not P._nama_style(e["p"]).startswith(TOC_STYLE)
+                             and not P._nama_style(e["p"]).startswith(TOC_STYLE)
                          and any(pola.match(e["teks"]) for _, pola in BAGIAN.values()))
         if (adalah_bab and hb.get("bab")) or (adalah_bagian and hb.get("bagian")):
             if not _awal_halaman_baru(badan, k):
@@ -1147,7 +1186,50 @@ def perbaiki(doc, rules):
     _atur_halaman_baru(doc, t)
 
 
+def _pindah_keterangan(doc, t):
+    """Keterangan gambar di bawah gambar, keterangan tabel di atas tabel (sesuai aturan)."""
+    ket = t.get("keterangan") or {}
+    if not (ket.get("tabel_posisi") or ket.get("gambar_posisi")):
+        return
+    zona = P.classify_zones_untuk_italic(doc)
+    badan = _urutan_badan(doc)
+    mulai = next((k for k, e in enumerate(badan) if e["jenis"] == "p" and zona[e["idx"]] == "judul_bab"), None)
+    if mulai is None:
+        return
+    for k in range(mulai, len(badan)):
+        e = badan[k]
+        if e["jenis"] == "tbl":
+            pola, aturan = KAP_TABEL, ket.get("tabel_posisi")
+        elif e["jenis"] == "p" and e["gambar"]:
+            pola, aturan = KAP_GAMBAR, ket.get("gambar_posisi")
+        else:
+            continue
+        if not aturan:
+            continue
+        atas, bawah = _teks_tetangga(badan, k, -1), _teks_tetangga(badan, k, +1)
+        if pola.match(atas) and not pola.match(bawah) and aturan == "bawah":
+            arah = -1
+        elif pola.match(bawah) and not pola.match(atas) and aturan == "atas":
+            arah = +1
+        else:
+            continue
+        j = k + arah
+        while 0 <= j < len(badan) and not (badan[j]["jenis"] == "p" and badan[j]["teks"]):
+            j += arah
+        cap = badan[j]["el"]
+        if arah == -1:
+            e["el"].addnext(cap)        # keterangan pindah ke bawah gambar
+        else:
+            e["el"].addprevious(cap)    # keterangan pindah ke atas tabel
+        badan = _urutan_badan(doc)      # urutan berubah; hitung ulang
+        for k2, e2 in enumerate(badan):
+            if e2["el"] is e["el"]:
+                k = k2
+                break
+
+
 def _perbaiki_lain(doc, rules, t):
+    _pindah_keterangan(doc, t)
     f = rules.get("font") or {}
     nama, ukuran = f.get("nama"), f.get("ukuran_isi_pt")
     spasi = (rules.get("spasi") or {}).get("baris_isi")
@@ -1177,6 +1259,9 @@ def _perbaiki_lain(doc, rules, t):
             _font_tanda_paragraf(p, nama, ukuran)
             if spasi:
                 p.paragraph_format.line_spacing = spasi
+            rata = (rules.get("perataan") or {}).get("jenis")
+            if rata == "justify":
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     # judul BAB: nomor di atas, judul di bawah
     if (t.get("judul_bab") or {}).get("baris_baru"):
@@ -1188,7 +1273,7 @@ def _perbaiki_lain(doc, rules, t):
     bg = t.get("bagian") or {}
     if bg.get("judul_tengah"):
         for e in _judul_bagian(badan, zona):
-            _format_bagian_judul(e["p"], nama, ukuran)
+            _format_bagian_judul(doc, e["p"], nama, ukuran, spasi)
     if bg.get("isi_daftar"):
         _format_daftar(doc, rules)
 
@@ -1203,7 +1288,14 @@ def _perbaiki_lain(doc, rules, t):
             if KAP_TABEL.match(e["teks"]) or KAP_GAMBAR.match(e["teks"]):
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p.paragraph_format.first_line_indent = Cm(0)
-                p.paragraph_format.keep_with_next = True
+                p.paragraph_format.keep_with_next = bool(KAP_TABEL.match(e["teks"]))   # keterangan tabel di atas tabel
+                if KAP_GAMBAR.match(e["teks"]):                                      # gambar menempel ke keterangannya
+                    sebelum = p._p.getprevious()
+                    while sebelum is not None and sebelum.tag == qn("w:p") and not "".join(sebelum.itertext()).strip() and not sebelum.xpath(".//w:drawing"):
+                        sebelum = sebelum.getprevious()
+                    if sebelum is not None and sebelum.tag == qn("w:p") and sebelum.xpath(".//w:drawing"):
+                        from docx.text.paragraph import Paragraph
+                        Paragraph(sebelum, p._parent).paragraph_format.keep_with_next = True
             if spasi:
                 p.paragraph_format.line_spacing = spasi
     if (t.get("tabel") or {}).get("font") and ukuran:
