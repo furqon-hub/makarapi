@@ -75,7 +75,10 @@ input[type=text],input[type=number],select{width:100%;padding:9px;border:1px sol
       <div class="row">
         <button type="button" class="btn sec" id="preFebi">Isi contoh (FEBI)</button>
         <button type="button" class="btn sec" id="preKosong">Kosongkan semua</button>
+        <button type="button" class="btn sec" id="preContoh">Ambil dari dokumen contoh</button>
+        <input type="file" id="fileContoh" accept=".docx" class="hide">
       </div>
+      <p class="note" id="infoContoh"></p>
       <div id="ceklis"></div>
     </div>
   </section>
@@ -195,6 +198,8 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
     ["bagian.isi_daftar","bool","Isi Daftar Isi/Tabel/Gambar ikut font & spasi isi"]]],
    ["Butir / poin",[
     ["butir.otomatis","bool","Butir bernomor atau berpoin pakai penomoran otomatis"]]],
+   ["Sitasi",[
+    ["sitasi.silang","bool","Sitasi di teks cocok dengan Daftar Pustaka (dan sebaliknya)"]]],
    ["Bagian wajib ada",[
     ["bagian_wajib.kata_pengantar","bool","Kata Pengantar"],["bagian_wajib.abstrak","bool","Abstrak"],
     ["bagian_wajib.daftar_isi","bool","Daftar Isi (dibuatkan otomatis)"],["bagian_wajib.daftar_tabel","bool","Daftar Tabel (jika ada tabel, dibuatkan otomatis)"],
@@ -253,6 +258,27 @@ if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catc
   }
   $("preFebi").onclick=function(){aturSemua(true)};
   $("preKosong").onclick=function(){aturSemua(false)};
+  $("preContoh").onclick=function(){$("fileContoh").click()};
+  $("fileContoh").onchange=function(){
+    var f=this.files[0];if(!f)return;
+    var info=$("infoContoh");info.textContent="Membaca dokumen contoh...";
+    var fd=new FormData();fd.append("file",f);
+    fetch("/ekstrak",{method:"POST",body:fd}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||"Gagal membaca dokumen.");return j})}).then(function(j){
+      var is=j.isian||{};
+      Object.keys(CEK).forEach(function(k){
+        var c=CEK[k],p=k.split("."),g=p[0],n=p[1],v;
+        if(g==="bagian_wajib")v=(is.bagian_wajib||[]).indexOf(n)>=0;
+        else v=is[g]&&is[g][n]!==undefined?is[g][n]:undefined;
+        if(v===undefined||v===false){c.on.checked=false}
+        else{c.on.checked=true;if(c.inp&&v!==true)c.inp.value=String(v)}
+        segarkan(c);
+      });
+      simpanKustom();
+      info.textContent="Terisi dari \""+f.name+"\". "+(j.catatan||[]).join(" ")+" Periksa lagi isiannya sebelum dipakai.";
+    }).catch(function(e){info.textContent=e.message});
+    this.value="";
+  };
+
   bangunCeklis();
 
   function formData(){

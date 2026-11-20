@@ -77,6 +77,7 @@ def aturan_dari_json(dasar, teks_json):
     bg = j.get("bagian") or {}
     bt = j.get("butir") or {}
     tb = j.get("tabel") or {}
+    st_ = j.get("sitasi") or {}
     nh = j.get("nomor_halaman") or {}
     ket = j.get("keterangan") or {}
     dp = j.get("daftar_pustaka") or {}
@@ -91,6 +92,7 @@ def aturan_dari_json(dasar, teks_json):
         "judul_bab": {"kapital": _bool(jb, "kapital"), "tebal": _bool(jb, "tebal"), "rata_tengah": _bool(jb, "rata_tengah"), "baris_baru": _bool(jb, "baris_baru")},
         "bagian": {"judul_tengah": _bool(bg, "judul_tengah"), "isi_daftar": _bool(bg, "isi_daftar")},
         "butir": {"otomatis": _bool(bt, "otomatis")},
+        "sitasi": {"silang": _bool(st_, "silang")},
         "tabel": {"font": _bool(tb, "font")},
         "judul_subbab": {"tebal": _bool(js, "tebal")},
         "judul": {"heading": _bool(jd, "heading"), "penomoran": _bool(jd, "penomoran"), "font_isi": _bool(jd, "font_isi")},

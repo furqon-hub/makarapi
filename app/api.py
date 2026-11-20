@@ -40,6 +40,7 @@ from starlette.background import BackgroundTask
 import auto_fix
 import italic_detector
 import kustom
+import ekstrak
 import parser as parser_mod
 import rule_engine
 
@@ -53,7 +54,7 @@ RATE_LIMIT = 10          # permintaan
 RATE_WINDOW = 60         # detik
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-app = FastAPI(title="MakaRapi API", version="0.5.4")
+app = FastAPI(title="MakaRapi API", version="0.6.0")
 _hits = defaultdict(deque)
 
 PROFIL = [
@@ -190,7 +191,7 @@ def _aturan_untuk(profil, atas_cm, bawah_cm, kiri_cm, kanan_cm, font_nama, font_
 
 @app.middleware("http")
 async def rate_limiter(request: Request, call_next):
-    if request.url.path in ("/check", "/fix"):
+    if request.url.path in ("/check", "/fix", "/ekstrak"):
         ip = request.client.host if request.client else "unknown"
         now = time.time()
         q = _hits[ip]
@@ -336,6 +337,21 @@ async def fix(
         filename=f"fixed_{file.filename}",
         background=BackgroundTask(_bersihkan),
     )
+
+
+@app.post("/ekstrak")
+async def ekstrak_contoh(request: Request, file: UploadFile = File(...)):
+    """Baca dokumen contoh yang sudah benar -> isian daftar centang Kustom."""
+    path = await _simpan_upload(file)
+    try:
+        try:
+            doc = Document(path)
+        except Exception:
+            raise HTTPException(status_code=422, detail="File .docx tidak dapat dibaca (rusak atau bukan dokumen Word).")
+        isian, catatan = ekstrak.ekstrak(doc)
+        return {"isian": isian, "catatan": catatan}
+    finally:
+        os.unlink(path)
 
 
 @app.get("/.well-known/assetlinks.json", include_in_schema=False)

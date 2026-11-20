@@ -481,6 +481,77 @@ def _paksa_baris_baru(p):
     p._p.insert(idx, run_br(awalan, contoh))
 
 
+
+# ---------- sitasi di teks <-> daftar pustaka ----------
+
+_NAMA = r"[A-Z][A-Za-zÀ-ɏ'’\-]+"
+_TAHUN = r"(?:19|20)\d{2}[a-z]?"
+SITASI_KURUNG = re.compile(r"\(([^()]*?\b(?:19|20)\d{2}[a-z]?[^()]*)\)")
+SITASI_NARATIF = re.compile(
+    r"(" + _NAMA + r")(?:\s+(?:dan|&|and)\s+" + _NAMA + r"|\s+et\s+al\.?|\s+dkk\.?)?\s+\((" + _TAHUN + r")(?:[,;][^()]*)?\)")
+BUKAN_PENULIS = {"tabel", "gambar", "bab", "pada", "tahun", "sejak", "hingga", "antara", "sekitar", "periode",
+                 "table", "figure", "pasal", "ayat", "bagian", "halaman", "hlm", "tanggal", "bulan", "dalam", "oleh"}
+
+
+def _kunci(penulis, tahun):
+    return (re.sub(r"[^a-z]", "", penulis.lower()), re.sub(r"[a-z]$", "", tahun.lower()))
+
+
+def _sitasi_dalam_teks(teks):
+    """Himpunan (penulis, tahun) dari satu paragraf: (Penulis, 2020) / (A & B, 2020; C, 2019) / Penulis (2020)."""
+    hasil = []
+    for m in SITASI_KURUNG.finditer(teks):
+        for bagian in m.group(1).split(";"):
+            mm = re.match(r"\s*(?:lihat|see|misalnya|cf\.)?\s*(" + _NAMA + r")[^,;()]*?,?\s+(" + _TAHUN + r")\b", bagian)
+            if mm and mm.group(1).lower() not in BUKAN_PENULIS:
+                hasil.append((mm.group(1), mm.group(2)))
+    for m in SITASI_NARATIF.finditer(teks):
+        if m.group(1).lower() not in BUKAN_PENULIS:
+            hasil.append((m.group(1), m.group(2)))
+    return hasil
+
+
+def _entri_pustaka(teks):
+    """(penulis pertama, tahun) dari satu entri daftar pustaka, atau None."""
+    t = teks.strip()
+    mn = re.match(r"(" + _NAMA + r")", t)
+    my = re.search(r"\(\s*(" + _TAHUN + r")\s*\)", t) or re.search(r"\b(" + _TAHUN + r")\b", t)
+    if not mn or not my:
+        return None
+    return mn.group(1), my.group(1)
+
+
+def _periksa_sitasi(doc, zona):
+    """Kembalikan (temuan, jumlah_pemeriksaan): sitasi tanpa pustaka & pustaka tanpa sitasi."""
+    bab_pertama = next((i for i, z in enumerate(zona) if z == "judul_bab"), None)
+    entri = [(p.text.strip(), _entri_pustaka(p.text)) for i, p in enumerate(doc.paragraphs)
+             if zona[i] == "daftar_pustaka" and p.text.strip()]
+    entri = [(t, k) for t, k in entri if k]
+    if bab_pertama is None or not entri:
+        return [], 0, False
+    kunci_pustaka = {_kunci(*k) for _, k in entri}
+    dikutip = {}
+    for i, p in enumerate(doc.paragraphs):
+        if i < bab_pertama or zona[i] in ("daftar_pustaka", "judul_daftar_pustaka"):
+            continue
+        for pen, th in _sitasi_dalam_teks(p.text):
+            dikutip.setdefault(_kunci(pen, th), (pen, th, p.text.strip()[:40]))
+    temuan = []
+    if not dikutip:     # tidak satu pun sitasi terbaca: satu temuan ringkas, bukan puluhan
+        return [("sitasi_tidak_ada", "Isi bab", f"tidak ada sitasi (Penulis, Tahun) terbaca; {len(entri)} pustaka tidak dikutip",
+                 "setiap pustaka dikutip di teks")], 1, True
+    for k, (pen, th, kon) in dikutip.items():
+        if k not in kunci_pustaka:
+            temuan.append(("sitasi_tanpa_pustaka", f"Sitasi ({pen}, {th}) di \"{kon}\"",
+                           "tidak ada di Daftar Pustaka", "setiap sitasi punya entri di Daftar Pustaka"))
+    kunci_kutipan = set(dikutip)
+    for t, k in entri:
+        if _kunci(*k) not in kunci_kutipan:
+            temuan.append(("pustaka_tanpa_sitasi", f"Pustaka: \"{t[:50]}\"",
+                           "tidak dikutip di teks", "setiap pustaka dikutip di teks"))
+    return temuan, len(dikutip) + len(entri), True
+
+
 # ---------- pemeriksaan ----------
 
 def jalankan(doc, paragraphs_info, rules):
@@ -734,6 +805,13 @@ def jalankan(doc, paragraphs_info, rules):
             if salah:
                 tambah("tabel_isi", f"Tabel ke-{n}", ", ".join(salah),
                        f"font {target:g} pt, muat dalam halaman", "otomatis")
+
+    # -- kecocokan sitasi di teks dengan Daftar Pustaka --
+    if (t.get("sitasi") or {}).get("silang"):
+        temuan_s, n_s, bisa = _periksa_sitasi(doc, zona)
+        total += n_s
+        for kat, lok, dit, seh in temuan_s:
+            tambah(kat, lok, dit, seh, "manual", severity="perlu_verifikasi")
 
     # -- daftar pustaka --
     dp = t.get("daftar_pustaka") or {}
